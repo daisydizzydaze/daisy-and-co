@@ -194,15 +194,15 @@ export function AllocationScreen({ month, setMonth, tags, buckets, onTagsChanged
               <span className="eyebrow">Saving rate</span>
               <span className="big">{pct(s?.saving_rate)}</span>
               <span className="muted small">Growth {d.show(s?.growth)} ÷ net income {d.show(net)}</span>
-              <span className={`status ${balanced && hasIncome ? 'good' : unallocated < 0 ? 'bad' : ''}`}>
-                {!hasIncome
-                  ? 'Add this month’s income to start'
-                  : balanced
-                    ? '🎉 Every dollar has a job'
+              {!(hasIncome && balanced) && (
+                <span className={`status ${unallocated < 0 && hasIncome ? 'bad' : ''}`}>
+                  {!hasIncome
+                    ? 'Add this month’s income to start'
                     : unallocated > 0
                       ? `${d.show(unallocated)} still to assign`
                       : `Over-assigned by ${d.show(-unallocated)}`}
-              </span>
+                </span>
+              )}
             </div>
             <Bud mood={mood} size={92} coin={mood === 'cheer'} />
           </section>
@@ -315,25 +315,51 @@ function equivalent(d: Display, currency: string, hkd: number | null | undefined
   return d.cur !== 'HKD' ? d.show(hkd) : '';
 }
 
+// Which statement sections are open. Folded by default to keep the page short; remembered per browser.
+function readOpen(): Set<string> {
+  try { return new Set(JSON.parse(localStorage.getItem('open-blocks') ?? '[]')); } catch { return new Set(); }
+}
+function useOpenBlock(title: string): [boolean, () => void] {
+  const [open, setOpen] = useState(() => readOpen().has(title));
+  const toggle = () => {
+    const next = !open;
+    setOpen(next);
+    try {
+      const s = readOpen();
+      if (next) s.add(title); else s.delete(title);
+      localStorage.setItem('open-blocks', JSON.stringify([...s]));
+    } catch { /* private mode */ }
+  };
+  return [open, toggle];
+}
+
 function Block(props: { title: string; hint: string; total: number; minus?: boolean; accent?: boolean; onAdd: () => void; addLabel: string; children: React.ReactNode }) {
   const d = useDisplay();
+  const [open, toggle] = useOpenBlock(props.title);
   return (
-    <div className={`block ${props.accent ? 'accent' : ''}`}>
-      <div className="block-head">
-        <div>
-          <h2>{props.minus ? <span className="less">less </span> : null}{props.title}</h2>
-          <span className="muted small">{props.hint}</span>
-        </div>
+    <div className={`block ${props.accent ? 'accent' : ''} ${open ? 'open' : 'folded'}`}>
+      <button className="block-head" aria-expanded={open} onClick={toggle}>
+        <span className="block-title">
+          <h2>
+            <svg className="block-chev" width="12" height="12" viewBox="0 0 12 8" aria-hidden="true"><path d="M1 1.5l5 5 5-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+            {props.minus ? <span className="less">less </span> : null}{props.title}
+          </h2>
+          {open && <span className="muted small">{props.hint}</span>}
+        </span>
         <span className="totals">
           <span className="num strong">{props.minus && props.total > 0 ? `(${d.show(props.total)})` : d.show(props.total)}</span>
           <span className="muted small num">{d.alt(props.total)}</span>
         </span>
-      </div>
-      <ul className="rows">{props.children}</ul>
-      <button className="add" onClick={props.onAdd}>
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
-        {props.addLabel}
       </button>
+      {open && (
+        <>
+          <ul className="rows">{props.children}</ul>
+          <button className="add" onClick={props.onAdd}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+            {props.addLabel}
+          </button>
+        </>
+      )}
     </div>
   );
 }
