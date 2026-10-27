@@ -35,3 +35,28 @@ export async function fetchRatesToHkd(date: string, currencies: string[]): Promi
   }
   throw new Error(`Couldn't fetch exchange rates (${(lastError as Error)?.message ?? 'offline'})`);
 }
+
+/** Latest rate on or before the month for each currency (fx is newest first). HKD is 1. */
+export function ratesFrom(fx: { currency: string; rate_to_hkd: number }[]): Record<string, number> {
+  const rates: Record<string, number> = { HKD: 1 };
+  fx.forEach((f) => { if (!(f.currency in rates)) rates[f.currency] = Number(f.rate_to_hkd); });
+  return rates;
+}
+
+export function toHkd(amount: number, currency: string, rates: Record<string, number>): number | null {
+  const r = rates[currency];
+  return r ? amount * r : null;
+}
+
+/** What a charge cost in the card's own currency (the billed amount if known). */
+export function inCardCurrency(
+  e: { amount: number; currency: string; charged_amount: number | null; charged_currency: string | null },
+  cardCurrency: string,
+  rates: Record<string, number>,
+): number | null {
+  const amt = Number(e.charged_amount ?? e.amount);
+  const cur = e.charged_amount != null ? e.charged_currency ?? cardCurrency : e.currency;
+  if (cur === cardCurrency) return amt;
+  const hkd = toHkd(amt, cur, rates);
+  return hkd === null || !rates[cardCurrency] ? null : hkd / rates[cardCurrency];
+}

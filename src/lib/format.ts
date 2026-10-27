@@ -52,3 +52,20 @@ export function pct(r: number | null | undefined): string {
   if (r === null || r === undefined) return '–';
   return `${(r * 100).toFixed(1)}%`;
 }
+
+/** Mirrors statement_month_for in the database: a charge after the closing day goes on next month's statement. */
+export function statementMonth(spentOn: string, closingDay: number | null | undefined): string {
+  const [y, m, d] = spentOn.split('-').map(Number);
+  return monthKey(y, m - 1 + (closingDay && d > closingDay ? 1 : 0));
+}
+
+/** "5 Nov" for a day in a month, clamped to the month's length. */
+export function dayIn(month: string, day: number): string {
+  const [y, m] = month.split('-').map(Number);
+  const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  return `${Math.min(day, last)} ${shortMonth(month)}`;
+}
+
+export function thisMonth(today = new Date()): string {
+  return monthKey(today.getFullYear(), today.getMonth());
+}

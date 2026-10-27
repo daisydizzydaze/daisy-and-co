@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { remove, save } from '../lib/data';
-import { addMonths, budgetMonthFor, monthName, todayISO } from '../lib/format';
+import { addMonths, budgetMonthFor, money, monthName, monthOnly, todayISO } from '../lib/format';
 import { CURRENCIES, type Allocation, type Bucket, type Income, type Section, type Tag } from '../lib/types';
 import { Sheet } from './Sheet';
 
@@ -13,7 +13,7 @@ interface Common {
   onTagsChanged: () => void;
 }
 
-function useSubmit(onSaved: () => void) {
+export function useSubmit(onSaved: () => void) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   async function run(fn: () => Promise<void>) {
@@ -30,7 +30,7 @@ function useSubmit(onSaved: () => void) {
   return { busy, error, run };
 }
 
-const num = (s: string) => Number(s.replace(/,/g, ''));
+export const num = (s: string) => Number(s.replace(/,/g, ''));
 
 export function IncomeSheet({ month, row, tags, buckets, onClose, onSaved, onTagsChanged }: Common & { row?: Income }) {
   const incomeTags = tags.filter((t) => t.kind === 'income' && (!t.archived || t.id === row?.tag_id));
@@ -120,12 +120,12 @@ export function IncomeSheet({ month, row, tags, buckets, onClose, onSaved, onTag
 
 const SECTION_LABEL: Record<Section, string> = {
   tax: 'Tax reserve',
-  opex: 'Operating expense',
+  opex: 'Card bill',
   reserve: 'Quick Cash',
   growth: 'Growth',
 };
 
-export function AllocationSheet({ month, section, row, tags, buckets, onClose, onSaved, onTagsChanged }: Common & { section: Section; row?: Allocation }) {
+export function AllocationSheet({ month, section, row, tags, buckets, billFor, onClose, onSaved, onTagsChanged }: Common & { section: Section; row?: Allocation; billFor?: (bucketId: string, currency: string) => number | null }) {
   const sectionTags = tags.filter((t) => t.kind === section && (!t.archived || t.id === row?.tag_id));
   const first = sectionTags[0];
   const [tagId, setTagId] = useState(row?.tag_id ?? first?.id ?? '');
@@ -135,6 +135,8 @@ export function AllocationSheet({ month, section, row, tags, buckets, onClose, o
   const [done, setDone] = useState(row?.done ?? false);
   const [note, setNote] = useState(row?.note ?? '');
   const { busy, error, run } = useSubmit(onSaved);
+  const bill = section === 'opex' && toBucket && billFor ? billFor(toBucket, currency) : null;
+  const lastMonth = monthOnly(addMonths(month, -1));
 
   function onTag(id: string) {
     setTagId(id);
@@ -173,13 +175,21 @@ export function AllocationSheet({ month, section, row, tags, buckets, onClose, o
         )}
         <CurrencyField value={currency} onChange={setCurrency} />
         <label className="field">
-          <span>{section === 'opex' ? 'Planned' : 'Amount'} ({currency})</span>
+          <span>{section === 'opex' ? `Set aside for the ${lastMonth} bill` : 'Amount'} ({currency})</span>
           <input inputMode="decimal" required value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0" />
         </label>
-        <BucketField label={section === 'opex' ? 'Card or cash it pays' : 'Moves to'} buckets={buckets} value={toBucket} onChange={setToBucket} />
+        {section === 'opex' && bill !== null && (
+          <p className="hint-row muted small">
+            Charged in {lastMonth} so far: <strong className="num">{money(bill, currency, 2)}</strong>
+            {Math.abs(bill - num(amount || '0')) >= 0.01 && (
+              <button type="button" className="link" onClick={() => setAmount(String(Math.round(bill * 100) / 100))}>Use this</button>
+            )}
+          </p>
+        )}
+        <BucketField label={section === 'opex' ? 'Card it pays' : 'Moves to'} buckets={buckets} value={toBucket} onChange={setToBucket} />
         <label className="check">
           <input type="checkbox" checked={done} onChange={(e) => setDone(e.target.checked)} />
-          <span>Money has moved</span>
+          <span>{section === 'opex' ? `Bill paid (marks ${lastMonth}’s charges as settled)` : 'Money has moved'}</span>
         </label>
         <label className="field">
           <span>Note</span>
@@ -192,7 +202,7 @@ export function AllocationSheet({ month, section, row, tags, buckets, onClose, o
   );
 }
 
-function TagPicker({ label, tags, value, onChange, onRenamed }: { label: string; tags: Tag[]; value: string; onChange: (id: string) => void; onRenamed: () => void }) {
+export function TagPicker({ label, tags, value, onChange, onRenamed }: { label: string; tags: Tag[]; value: string; onChange: (id: string) => void; onRenamed: () => void }) {
   const current = tags.find((t) => t.id === value);
   const [renaming, setRenaming] = useState(false);
   const [name, setName] = useState('');
@@ -237,7 +247,7 @@ function TagPicker({ label, tags, value, onChange, onRenamed }: { label: string;
   );
 }
 
-function CurrencyField({ value, onChange }: { value: string; onChange: (c: string) => void }) {
+export function CurrencyField({ value, onChange }: { value: string; onChange: (c: string) => void }) {
   return (
     <fieldset className="chips">
       <legend>Currency</legend>
@@ -252,7 +262,7 @@ function CurrencyField({ value, onChange }: { value: string; onChange: (c: strin
 }
 
 // Remember the last currency per section on this device, so SGD pay stays one tap away.
-function lastCurrency(key: string, fallback: string): string {
+export function lastCurrency(key: string, fallback: string): string {
   try {
     const v = localStorage.getItem(`currency:${key}`);
     return v && CURRENCIES.includes(v) ? v : fallback;
@@ -260,7 +270,7 @@ function lastCurrency(key: string, fallback: string): string {
     return fallback;
   }
 }
-function rememberCurrency(key: string, c: string) {
+export function rememberCurrency(key: string, c: string) {
   try {
     localStorage.setItem(`currency:${key}`, c);
   } catch {
@@ -282,7 +292,7 @@ function BucketField({ label, buckets, value, onChange }: { label: string; bucke
   );
 }
 
-function Actions({ busy, disabled, onDelete }: { busy: boolean; disabled?: boolean; onDelete?: () => void }) {
+export function Actions({ busy, disabled, onDelete }: { busy: boolean; disabled?: boolean; onDelete?: () => void }) {
   const [confirm, setConfirm] = useState(false);
   return (
     <div className="actions">

@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { copyPlan, loadMonth, save, saveFx, type MonthData } from '../lib/data';
-import { addMonths, money, monthName, monthOnly, pct, shortMonth } from '../lib/format';
-import { fetchRatesToHkd, rateDate } from '../lib/fx';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { copyPlan, loadMonth, save, saveFx, settleStatement, type MonthData } from '../lib/data';
+import { addMonths, dayIn, money, monthName, monthOnly, pct, shortMonth, todayISO } from '../lib/format';
+import { fetchRatesToHkd, inCardCurrency, rateDate, ratesFrom } from '../lib/fx';
+import { useMonthFx } from '../lib/useFx';
 import { DisplayContext, makeDisplay, savedDisplay, saveDisplay, useDisplay, type Display, type DisplayCurrency } from '../lib/display';
 import type { Allocation, Bucket, Income, Section, Tag } from '../lib/types';
 import { Bud, type Mood } from './Bud';
@@ -21,7 +22,7 @@ const SECTION_TITLE: Record<Section, string> = {
 
 const SECTION_HINT: Record<Section, string> = {
   tax: 'Reserve for your SG tax bill',
-  opex: 'Card repayments and cash, matched to the Expense screen',
+  opex: 'Last month’s card bills, matched to the Expense screen',
   reserve: 'Rolls into your cash reserve',
   growth: 'Rolled over to build wealth',
 };
@@ -72,33 +73,29 @@ export function AllocationScreen({ month, setMonth, tags, buckets, onTagsChanged
   // Foreign currencies used this month. Each gets one rate per month, pulled once and saved.
   const usedCurrencies = useMemo(() => {
     if (!data) return [];
-    const used = new Set<string>([...data.income.map((i) => i.currency), ...data.allocations.map((a) => a.currency)]);
+    const used = new Set<string>([
+      ...data.income.map((i) => i.currency),
+      ...data.allocations.map((a) => a.currency),
+      ...data.bills.map((e) => e.currency),
+      ...buckets.map((b) => b.currency),
+    ]);
     used.add('SGD'); // always needed for the SGD view
     return [...used].filter((c) => c !== 'HKD').sort();
-  }, [data]);
+  }, [data, buckets]);
   const thisMonthRate = (c: string) => data?.fx.find((f) => f.currency === c && f.month === month);
   const missingThisMonth = usedCurrencies.filter((c) => !thisMonthRate(c));
-  const [fxError, setFxError] = useState<string | null>(null);
-  const tried = useRef(new Set<string>());
+  const fxError = useMonthFx(month, missingThisMonth, reload);
 
-  useEffect(() => {
-    const todo = missingThisMonth.filter((c) => !tried.current.has(`${month}:${c}`));
-    if (todo.length === 0) return;
-    todo.forEach((c) => tried.current.add(`${month}:${c}`));
-    (async () => {
-      try {
-        const rates = await fetchRatesToHkd(rateDate(month), todo);
-        for (const [c, r] of Object.entries(rates)) await saveFx(month, c, r);
-        setFxError(null);
-        reload();
-      } catch (e) {
-        setFxError((e as Error).message);
-      }
-    })();
-  }, [missingThisMonth.join(','), month, reload]);
-
+  // Ticking a card bill also marks last month's charges on that card as settled.
   async function toggleDone(a: Allocation) {
-    await save('allocations', { done: !a.done, done_on: a.done ? null : new Date().toISOString().slice(0, 10) }, a.id);
+    try {
+      const on = todayISO();
+      await save('allocations', { done: !a.done, done_on: a.done ? null : on }, a.id);
+      const card = a.to_bucket_id ?? tagById.get(a.tag_id)?.default_bucket_id;
+      if (a.section === 'opex' && card) await settleStatement(card, addMonths(month, -1), !a.done, on);
+    } catch (e) {
+      setError((e as Error).message);
+    }
     reload();
   }
 
@@ -114,15 +111,47 @@ export function AllocationScreen({ month, setMonth, tags, buckets, onTagsChanged
     setBusy(false);
   }
 
-  // Latest rate on or before this month for each currency (data.fx is newest first).
-  const rates: Record<string, number> = {};
-  data?.fx.forEach((f) => { if (!(f.currency in rates)) rates[f.currency] = Number(f.rate_to_hkd); });
+  const rates = ratesFrom(data?.fx ?? []);
+  /** What's been charged to a card last month, in the given currency. */
+  const billFor = (bucketId: string | null | undefined, cur: string): number | null => {
+    if (!bucketId || !data) return null;
+    let sum = 0;
+    for (const e of data.bills) {
+      if (e.paid_from !== bucketId || e.reimbursable) continue;
+      const v = inCardCurrency(e, cur, rates);
+      if (v === null) return null;
+      sum += v;
+    }
+    return sum;
+  };
   const sgdRate = rates.SGD;
   const d = makeDisplay(displayCur, rates);
   const pickDisplay = (c: DisplayCurrency) => {
     setDisplayCur(c);
     saveDisplay(c);
   };
+
+  // Cards and loans with no bill line yet this month, offered as one-tap lines.
+  const billBucket = (a: Allocation) => a.to_bucket_id ?? tagById.get(a.tag_id)?.default_bucket_id ?? null;
+  const covered = new Set((data?.allocations ?? []).filter((a) => a.section === 'opex').map(billBucket));
+  const suggestions = buckets
+    .filter((b) => b.active && (b.type === 'Card' || b.type === 'Loan') && !covered.has(b.id))
+    .map((b) => {
+      const tag = tags.find((t) => t.kind === 'opex' && !t.archived && t.default_bucket_id === b.id);
+      const amount = b.type === 'Loan' ? Number(b.monthly_payment ?? 0) : billFor(b.id, b.currency) ?? 0;
+      return { b, tag, amount };
+    })
+    .filter((x) => x.tag && (x.amount > 0 || x.b.type === 'Card'));
+
+  async function addSuggested(x: (typeof suggestions)[number]) {
+    try {
+      await save('allocations', { budget_month: month, section: 'opex', tag_id: x.tag!.id, currency: x.b.currency, amount: Math.round(x.amount * 100) / 100, to_bucket_id: x.b.id });
+    } catch (e) {
+      setError((e as Error).message);
+    }
+    reload();
+  }
+  const dueLabel = (b?: Bucket) => (b?.due_day ? `due ${dayIn(month, b.due_day)}` : null);
 
   const allocs = (section: Section) => data?.allocations.filter((a) => a.section === section) ?? [];
   const withheld = data?.income.filter((i) => Number(i.tax_withheld) > 0) ?? [];
@@ -230,15 +259,31 @@ export function AllocationScreen({ month, setMonth, tags, buckets, onTagsChanged
               <Block
                 key={sec}
                 title={SECTION_TITLE[sec]}
-                hint={SECTION_HINT[sec]}
+                hint={sec === 'opex' ? `${monthOnly(addMonths(month, -1))} card bills, matched to the Expense screen` : SECTION_HINT[sec]}
                 total={sec === 'opex' ? s?.opex_planned ?? 0 : sec === 'reserve' ? s?.quick_cash ?? 0 : s?.growth ?? 0}
                 minus
                 accent={sec === 'growth'}
                 onAdd={() => setEditing({ kind: 'alloc', section: sec })}
-                addLabel={sec === 'opex' ? 'Add expense line' : sec === 'reserve' ? 'Add Quick Cash' : 'Add growth'}
+                addLabel={sec === 'opex' ? 'Add card bill' : sec === 'reserve' ? 'Add Quick Cash' : 'Add growth'}
               >
                 {allocs(sec).map((a) => (
-                  <AllocRow key={a.id} a={a} tag={tagById.get(a.tag_id)} bucket={bucketById.get(a.to_bucket_id ?? '')} hkd={hkd.get(`${sec}:${a.id}`)} showActual={sec === 'opex'} onEdit={() => setEditing({ kind: 'alloc', section: sec, row: a })} onToggle={() => toggleDone(a)} />
+                  <AllocRow key={a.id} a={a} tag={tagById.get(a.tag_id)} bucket={bucketById.get(billBucket(a) ?? '')} due={sec === 'opex' ? dueLabel(bucketById.get(billBucket(a) ?? '')) : null} hkd={hkd.get(`${sec}:${a.id}`)} showActual={sec === 'opex' && bucketById.get(billBucket(a) ?? '')?.type !== 'Loan'} billMonth={monthOnly(addMonths(month, -1)).slice(0, 3)} bill={sec === 'opex' ? billFor(a.to_bucket_id ?? tagById.get(a.tag_id)?.default_bucket_id, a.currency) : null} onEdit={() => setEditing({ kind: 'alloc', section: sec, row: a })} onToggle={() => toggleDone(a)} />
+                ))}
+                {sec === 'opex' && suggestions.map((x) => (
+                  <li key={`s-${x.b.id}`} className="suggest">
+                    <button className="row" onClick={() => addSuggested(x)}>
+                      <span className="row-main">
+                        <span className="tag">{x.tag!.name}</span>
+                        <span className="muted small">
+                          {[x.b.type === 'Loan' ? 'monthly repayment' : `${monthOnly(addMonths(month, -1)).slice(0, 3)} charges so far`, dueLabel(x.b)].filter(Boolean).join(' · ')}
+                        </span>
+                      </span>
+                      <span className="row-amt">
+                        <span className="num muted">{money(x.amount, x.b.currency)}</span>
+                        <span className="small strong">+ Add</span>
+                      </span>
+                    </button>
+                  </li>
                 ))}
               </Block>
             ))}
@@ -255,7 +300,7 @@ export function AllocationScreen({ month, setMonth, tags, buckets, onTagsChanged
         <IncomeSheet month={month} row={editing.row} tags={tags} buckets={buckets} onTagsChanged={onTagsChanged} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); reload(); }} />
       )}
       {editing?.kind === 'alloc' && (
-        <AllocationSheet month={month} section={editing.section} row={editing.row} tags={tags} buckets={buckets} onTagsChanged={onTagsChanged} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); reload(); }} />
+        <AllocationSheet month={month} billFor={billFor} section={editing.section} row={editing.row} tags={tags} buckets={buckets} onTagsChanged={onTagsChanged} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); reload(); }} />
       )}
     </div>
     </DisplayContext.Provider>
@@ -309,25 +354,30 @@ function Row({ name, sub, native, currency, amount, onEdit }: { name: string; su
   );
 }
 
-function AllocRow({ a, tag, bucket, hkd, showActual, onEdit, onToggle }: {
-  a: Allocation; tag?: Tag; bucket?: Bucket; hkd?: { amount: number | null; actual: number | null }; showActual?: boolean; onEdit: () => void; onToggle: () => void;
+function AllocRow({ a, tag, bucket, due, hkd, showActual, bill, billMonth, onEdit, onToggle }: {
+  a: Allocation; tag?: Tag; bucket?: Bucket; due?: string | null; hkd?: { amount: number | null; actual: number | null }; showActual?: boolean; bill?: number | null; billMonth?: string; onEdit: () => void; onToggle: () => void;
 }) {
   const d = useDisplay();
   const planned = hkd?.amount ?? 0;
   const actual = hkd?.actual ?? 0;
-  const ratio = planned > 0 ? Math.min(1, actual / planned) : 0;
-  const over = showActual && actual > planned;
+  // Card lines compare what was charged with what's set aside, in the line's own currency.
+  const setAside = Number(a.amount);
+  const used = bill ?? null;
+  const ratio = used !== null ? (setAside > 0 ? Math.min(1, used / setAside) : 1) : planned > 0 ? Math.min(1, actual / planned) : 0;
+  const over = showActual && (used !== null ? used > setAside + 0.005 : actual > planned);
   return (
     <li className="alloc">
-      <button className={`tick ${a.done ? 'on' : ''}`} aria-pressed={a.done} aria-label={a.done ? 'Marked as moved' : 'Mark as moved'} onClick={onToggle}>
+      <button className={`tick ${a.done ? 'on' : ''}`} aria-pressed={a.done} aria-label={a.section === 'opex' ? (a.done ? 'Bill paid' : 'Mark bill as paid') : a.done ? 'Marked as moved' : 'Mark as moved'} onClick={onToggle}>
         {a.done && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" aria-hidden="true"><path d="M4 12l5 5L20 6" /></svg>}
       </button>
       <button className="row" onClick={onEdit}>
         <span className="row-main">
           <span className="tag">{tag?.name ?? '–'}</span>
-          <span className="muted small">{[bucket ? `to ${bucket.name}` : null, a.note].filter(Boolean).join(' · ') || (a.done ? 'moved' : 'planned')}</span>
+          <span className="muted small">{a.section === 'opex'
+            ? [a.done ? 'paid' : due ?? 'set aside', a.note].filter(Boolean).join(' · ')
+            : [bucket ? `to ${bucket.name}` : null, a.note].filter(Boolean).join(' · ') || (a.done ? 'moved' : 'planned')}</span>
           {showActual && (
-            <span className="meter" aria-label={`Spent ${d.inCur(actual, a.currency)} of ${money(Number(a.amount), a.currency)}`}>
+            <span className="meter" aria-label={`Charged ${money(bill ?? null, a.currency)} of ${money(Number(a.amount), a.currency)} set aside`}>
               <span className={`grow ${over ? 'over' : ''}`} style={{ width: `${(over ? 1 : ratio) * 100}%` }} />
             </span>
           )}
@@ -335,7 +385,7 @@ function AllocRow({ a, tag, bucket, hkd, showActual, onEdit, onToggle }: {
         <span className="row-amt">
           <span className="num">{money(Number(a.amount), a.currency)}</span>
           {showActual ? (
-            <span className={`small ${over ? 'bad-text' : 'muted'}`}>{d.inCur(actual, a.currency) || money(actual)} spent</span>
+            <span className={`small ${over ? 'bad-text' : 'muted'}`}>{billMonth} charges {bill != null ? money(bill, a.currency) : d.inCur(actual, a.currency) || money(actual)}</span>
           ) : (
             <span className="muted small num">{equivalent(d, a.currency, hkd?.amount ?? null)}</span>
           )}

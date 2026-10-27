@@ -218,3 +218,29 @@ input:focus-visible, select:focus-visible, button:focus-visible { outline: 3px s
 .link.rename { flex-basis: 100%; margin-top: 2px; }
 .rename-row { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .rename-row input { flex: 1 1 200px; width: auto; }
+
+/* Expense screen */
+.statements h2, .later h2 { font-size: 17px; }
+.statement-row { gap: 8px; }
+.row.picked .tag { text-decoration: underline; text-decoration-thickness: 2px; text-decoration-color: var(--pink); }
+.cat-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(60px, 1.2fr) auto; gap: 8px 10px; align-items: center; }
+.cat-list li { display: contents; }
+.cat-name { font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cat-list .meter { margin: 0; max-width: none; }
+.expense-list { padding: 12px 16px; }
+.list-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+.list-head .btn { display: inline-flex; align-items: center; gap: 6px; }
+.filters { display: flex; flex-wrap: wrap; gap: 6px; }
+.filters button { min-height: 36px; padding: 0 12px; border: 1.5px solid var(--ink); border-radius: 999px; background: var(--paper); font-size: 13px; font-weight: 600; cursor: pointer; }
+.filters button[aria-pressed='true'] { background: var(--ink); color: var(--bg); }
+.day { margin-top: 12px; }
+.day-head { font-family: var(--body); font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); margin: 0; padding-bottom: 2px; border-bottom: 1px solid var(--line); }
+.empty { padding: 28px 0 16px; }
+.pill { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; border: 1.2px solid var(--ink); }
+.pill.charged { background: var(--yellow); }
+.pill.settled { background: var(--pink); }
+.hint-row { margin: -4px 0 0; display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+.suggest .row { border-top-style: dashed; opacity: 0.85; }
+.account-dates { flex-basis: 100%; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 4px 0 8px; }
+.accounts li { border-bottom: 1px dashed var(--line); padding-bottom: 8px; }
+.statement-row .row-main .small { white-space: normal; }

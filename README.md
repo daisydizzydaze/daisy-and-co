@@ -23,6 +23,7 @@ Saving rate = Growth ÷ Net income
 ## One-time setup
 
 1. **Database:** Supabase → SQL Editor → New query → paste `supabase/migrations/001_init.sql` → Run.
+   Then run each later script in order (`002_expenses.sql`, …). Each is safe to run twice.
 2. **Your login:** Supabase → Authentication → Users → Add user → Create new user (tick *Auto confirm*). Then Authentication → Sign In / Providers → turn off *Allow new users to sign up*.
 3. **Keys for the app:** GitHub → Settings → Secrets and variables → Actions → **Variables** tab → add `SUPABASE_URL` and `SUPABASE_ANON_KEY` (from Supabase → Project Settings → API). Both are public by design.
 4. **Hosting:** GitHub → Settings → Pages → Source: **GitHub Actions**. Every push to `main` redeploys.
