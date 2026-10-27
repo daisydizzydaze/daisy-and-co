@@ -21,6 +21,9 @@ export interface Bucket {
   liquidity: string;
   is_liability: boolean;
   active: boolean;
+  statement_day: number | null; // cards: day the statement closes (empty = month end)
+  due_day: number | null; // cards and loans: day the payment is due
+  monthly_payment: number | null; // loans
   sort: number;
 }
 
@@ -50,6 +53,23 @@ export interface Allocation {
   done_on: string | null;
   note: string | null;
   sort: number;
+}
+
+export interface Expense {
+  id: string;
+  spent_on: string;
+  budget_month: string; // calendar month of the charge
+  statement_month: string | null; // month the card statement it lands on closes
+  vendor: string | null;
+  currency: string;
+  amount: number;
+  tag_id: string | null;
+  paid_from: string;
+  charged_amount: number | null;
+  charged_currency: string | null;
+  reimbursable: boolean;
+  settled_on: string | null;
+  note: string | null;
 }
 
 export interface Line {
