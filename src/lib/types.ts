@@ -19,11 +19,16 @@ export interface Bucket {
   currency: string;
   type: string;
   liquidity: string;
+  unlock_age: number | null;
   is_liability: boolean;
   active: boolean;
   statement_day: number | null; // cards: day the statement closes (empty = month end)
   due_day: number | null; // cards and loans: day the payment is due
-  monthly_payment: number | null; // loans
+  monthly_payment: number | null; // loans: the repayment each period
+  payment_cadence: 'monthly' | 'quarterly' | 'yearly';
+  term_payments: number | null; // loans: e.g. 60
+  first_payment_on: string | null; // loans: date of payment 1
+  interest_rate: number | null; // loans: yearly %, optional
   sort: number;
 }
 
@@ -100,6 +105,22 @@ export interface FxRate {
 }
 
 export const CURRENCIES = ['HKD', 'SGD', 'USD', 'TWD'];
+
+/** Account types as stored, with the names shown in the app. */
+export const ACCOUNT_TYPES: { value: string; label: string }[] = [
+  { value: 'Card', label: 'Credit card' },
+  { value: 'Bank', label: 'Bank account / debit card' },
+  { value: 'Cash', label: 'Cash' },
+  { value: 'Brokerage', label: 'Investment' },
+  { value: 'Retirement', label: 'Retirement / pension' },
+  { value: 'Loan', label: 'Loan' },
+  { value: 'Property', label: 'Property' },
+  { value: 'Insurance', label: 'Insurance' },
+  { value: 'Other', label: 'Other' },
+];
+export const typeLabel = (t: string) => ACCOUNT_TYPES.find((x) => x.value === t)?.label ?? t;
+/** Paid with these, money leaves straight away, so the charge is settled at once. */
+export const PAYS_AT_ONCE = ['Cash', 'Bank'];
 
 export const KIND_LABEL: Record<TagKind, string> = {
   income: 'Income',

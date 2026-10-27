@@ -1,14 +1,14 @@
 import { useState } from 'react';
 import { remove, save } from '../lib/data';
 import { monthName, statementMonth, todayISO } from '../lib/format';
-import type { Bucket, Expense, Tag } from '../lib/types';
+import { PAYS_AT_ONCE, type Bucket, type Expense, type Tag } from '../lib/types';
 import { Actions, CurrencyField, lastCurrency, num, rememberCurrency, TagPicker, useSubmit } from './LineSheets';
 import { Sheet } from './Sheet';
 
-/** Accounts you can pay with: cards and cash, but not savings pots like the cash reserve. */
+/** Accounts you can pay with: credit and debit cards and cash, but not savings pots like the cash reserve. */
 export function payingAccounts(buckets: Bucket[], tags: Tag[], keep?: string) {
   const pots = new Set(tags.filter((t) => t.kind === 'reserve' || t.kind === 'growth').map((t) => t.default_bucket_id));
-  return buckets.filter((b) => (b.active && (b.type === 'Card' || b.type === 'Cash') && !pots.has(b.id)) || b.id === keep);
+  return buckets.filter((b) => (b.active && (b.type === 'Card' || PAYS_AT_ONCE.includes(b.type)) && !pots.has(b.id)) || b.id === keep);
 }
 
 function lastPaidWith(): string {
@@ -42,7 +42,7 @@ export function ExpenseSheet({ row, tags, buckets, defaultDate, onClose, onSaved
   const [spentOn, setSpentOn] = useState(row?.spent_on ?? defaultDate ?? todayISO());
   const [vendor, setVendor] = useState(row?.vendor ?? '');
   const [charged, setCharged] = useState(row?.charged_amount != null ? String(row.charged_amount) : '');
-  const [settled, setSettled] = useState(row ? row.settled_on !== null : account?.type === 'Cash');
+  const [settled, setSettled] = useState(row ? row.settled_on !== null : PAYS_AT_ONCE.includes(account?.type ?? ''));
   const [reimbursable, setReimbursable] = useState(row?.reimbursable ?? false);
   const [note, setNote] = useState(row?.note ?? '');
   const { busy, error, run } = useSubmit(onSaved);
@@ -53,7 +53,7 @@ export function ExpenseSheet({ row, tags, buckets, defaultDate, onClose, onSaved
   function pickAccount(id: string) {
     setPaidFrom(id);
     const b = buckets.find((x) => x.id === id);
-    if (!row) setSettled(b?.type === 'Cash');
+    if (!row) setSettled(PAYS_AT_ONCE.includes(b?.type ?? ''));
     if (!currencyTouched && b) setCurrencyRaw(b.currency);
   }
 
