@@ -25,6 +25,10 @@ export interface Bucket {
   group_id: string | null;
   surrender_value: number | null; // insurance: cash value if surrendered today
   surrender_value_on: string | null;
+  shares: number | null; // private equity: number of shares held
+  share_class: string | null; // e.g. Ordinary, Preferred, Options
+  price_per_share: number | null; // private equity: empty = value unknown
+  price_on: string | null;
   statement_day: number | null; // cards: day the statement closes (empty = month end)
   due_day: number | null; // cards and loans: day the payment is due
   monthly_payment: number | null; // loans: the repayment each period
@@ -130,6 +134,7 @@ export const ACCOUNT_TYPES: { value: string; label: string }[] = [
   { value: 'Bank', label: 'Bank account / debit card' },
   { value: 'Cash', label: 'Cash' },
   { value: 'Brokerage', label: 'Investment' },
+  { value: 'Equity', label: 'Private equity / start-up shares' },
   { value: 'Retirement', label: 'Retirement / pension' },
   { value: 'Loan', label: 'Loan' },
   { value: 'Property', label: 'Property' },

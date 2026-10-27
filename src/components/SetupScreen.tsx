@@ -74,8 +74,9 @@ function friendly(msg: string): string {
   if (msg.includes('buckets_user_id_name_key')) return 'You already have an account with that name. It may be a closed one: tap "Show closed" below to reopen it, or pick another name.';
   if (msg.includes('tags_user_id_kind_name_key')) return 'There’s already a tag with that name in this group. Pick another name.';
   if (msg.includes('account_groups_user_id_name_key')) return 'You already have a group with that name.';
+  if (msg.includes('shares') || msg.includes('price_per_share') || msg.includes('price_on') || msg.includes('base_type_check')) return 'The database needs the latest update first. Run 005_private_equity.sql in the Supabase SQL Editor.';
   if (msg.includes('account_groups') || msg.includes('group_id') || msg.includes('surrender_value') || msg.includes('currencies')) return 'The database needs the latest update first. Run 004_groups_currencies.sql in the Supabase SQL Editor.';
-  if (msg.includes('buckets_type_check')) return 'The database needs the latest update before it can save this type. Run 003_account_types.sql in the Supabase SQL Editor.';
+  if (msg.includes('buckets_type_check')) return 'The database needs the latest update before it can save this type. Run the newest scripts (003, 004, 005) in the Supabase SQL Editor.';
   return msg;
 }
 
@@ -136,6 +137,9 @@ function Accounts({ buckets, tags, groups, hasGroups, run, error }: { buckets: B
   const [name, setName] = useState('');
   const [localError, setLocalError] = useState<string | null>(null);
   const [showClosed, setShowClosed] = useState(false);
+  // Cards start folded; a new one opens so you can fill it in.
+  const [openIds, setOpenIds] = useState<Set<string>>(new Set());
+  const toggle = (id: string) => setOpenIds((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   const [groupId, setGroupIdRaw] = useState(groups[0]?.id ?? '');
   const group = groups.find((g) => g.id === groupId) ?? groups[0];
   const [currency, setCurrency] = useState('HKD');
@@ -159,23 +163,36 @@ function Accounts({ buckets, tags, groups, hasGroups, run, error }: { buckets: B
     run(async () => {
       const id = await insertBucket({ name: n, currency, type, liquidity, is_liability: isLiability(type), sort: buckets.length + 1, ...(hasGroups ? { group_id: group.id } : {}) });
       await ensureBillLine(id, n, type, tags);
+      setOpenIds((s) => new Set(s).add(id));
     }).then((ok) => ok && setName(''));
   }
 
   const open = buckets.filter((b) => b.active);
   const closed = buckets.filter((b) => !b.active);
   const groupOf = (b: Bucket) => groups.find((g) => g.id === b.group_id) ?? groups.find((g) => g.base_type === b.type) ?? groups[groups.length - 1];
-  const sections = groups.map((g) => ({ g, items: open.filter((b) => groupOf(b)?.id === g.id) })).filter((x) => x.items.length > 0);
+  const order = (b: Bucket) => (groupOf(b)?.sort ?? 999) * 1000 + b.sort;
+  const sections = LIQUIDITY.map((l) => ({ l, items: open.filter((b) => (LIQUIDITY.includes(b.liquidity) ? b.liquidity : 'Liquid') === l).sort((a, b) => order(a) - order(b)) }))
+    .filter((x) => x.items.length > 0);
+  const anyOpen = open.some((b) => openIds.has(b.id));
+  const card = (b: Bucket) => (
+    <AccountCard key={b.id} b={b} tags={tags} groups={groups} group={groupOf(b)} hasGroups={hasGroups} run={run}
+      open={openIds.has(b.id)} onToggle={() => toggle(b.id)} />
+  );
 
   return (
     <div className="stack">
-      <p className="muted small">Each card and loan has its own bill line under Operating expenses. Add or rename groups under Groups.</p>
-      {sections.map(({ g, items }) => (
-        <section key={g.id} className="stack" aria-label={g.name}>
-          <h2 className={`group-title t-${g.base_type}`}>{g.name}</h2>
-          <div className="acct-grid">
-            {items.map((b) => <AccountCard key={b.id} b={b} tags={tags} groups={groups} group={groupOf(b)} hasGroups={hasGroups} run={run} />)}
-          </div>
+      <div className="acct-intro">
+        <p className="muted small">Only Liquid counts toward your freedom number. Tap an account to edit it.</p>
+        {open.length > 0 && (
+          <button className="link small" onClick={() => setOpenIds(anyOpen ? new Set() : new Set(open.map((b) => b.id)))}>
+            {anyOpen ? 'Fold all' : 'Open all'}
+          </button>
+        )}
+      </div>
+      {sections.map(({ l, items }) => (
+        <section key={l} className="stack" aria-label={l}>
+          <h2 className={`group-title l-${l.split(' ')[0]}`}>{LIQUIDITY_TITLE[l] ?? l} <span className="muted small">{items.length}</span></h2>
+          <div className="acct-grid">{items.map(card)}</div>
         </section>
       ))}
 
@@ -202,7 +219,7 @@ function Accounts({ buckets, tags, groups, hasGroups, run, error }: { buckets: B
           <button className="link" onClick={() => setShowClosed(!showClosed)}>
             {showClosed ? 'Hide closed accounts' : `Show ${closed.length} closed`}
           </button>
-          {showClosed && <div className="acct-grid">{closed.map((b) => <AccountCard key={b.id} b={b} tags={tags} groups={groups} group={groupOf(b)} hasGroups={hasGroups} run={run} />)}</div>}
+          {showClosed && <div className="acct-grid">{closed.map(card)}</div>}
         </>
       )}
     </div>
@@ -216,6 +233,7 @@ const FALLBACK_GROUPS: AccountGroup[] = [
   { id: 'Cash', name: 'Cash', base_type: 'Cash', sort: 30, starter: true },
   { id: 'Loan', name: 'Loans', base_type: 'Loan', sort: 40, starter: true },
   { id: 'Brokerage', name: 'Investments', base_type: 'Brokerage', sort: 50, starter: true },
+  { id: 'Equity', name: 'Private equity', base_type: 'Equity', sort: 55, starter: true },
   { id: 'Retirement', name: 'Retirement and pension', base_type: 'Retirement', sort: 60, starter: true },
   { id: 'Property', name: 'Property', base_type: 'Property', sort: 70, starter: true },
   { id: 'Insurance', name: 'Insurance', base_type: 'Insurance', sort: 80, starter: true },
@@ -223,7 +241,30 @@ const FALLBACK_GROUPS: AccountGroup[] = [
 ];
 
 const isLiability = (type: string) => type === 'Card' || type === 'Loan';
-const defaultLiquidity = (type: string) => (type === 'Retirement' ? 'Locked until age' : type === 'Property' ? 'Illiquid' : 'Liquid');
+const defaultLiquidity = (type: string) => (type === 'Retirement' ? 'Locked until age' : type === 'Property' || type === 'Equity' ? 'Illiquid' : 'Liquid');
+const LIQUIDITY_TITLE: Record<string, string> = { Liquid: 'Liquid', 'Locked until age': 'Locked until an age', Illiquid: 'Illiquid' };
+
+const ordinal = (d: number) => `${d}${[11, 12, 13].includes(d % 100) ? 'th' : ['th', 'st', 'nd', 'rd'][d % 10] ?? 'th'}`;
+
+/** One line that sums up a folded card. */
+function summary(b: Bucket): string {
+  switch (b.type) {
+    case 'Card':
+      return `Closes ${b.statement_day ? ordinal(b.statement_day) : 'month end'}${b.due_day ? ` · due ${ordinal(b.due_day)}` : ''}`;
+    case 'Loan': {
+      const st = loanStatus(b, todayISO());
+      if (!st) return 'Add the repayment details';
+      return `${st.made} of ${st.made + st.left} paid${st.balance !== null ? ` · ${money(st.balance, b.currency)} left` : ''}`;
+    }
+    case 'Insurance':
+      return b.surrender_value != null ? `Surrender value ${money(b.surrender_value, b.currency)}` : 'Surrender value not set';
+    case 'Equity':
+      if (b.shares == null) return 'Add the number of shares';
+      return `${b.shares.toLocaleString('en-US')} ${b.share_class ? b.share_class.toLowerCase() + ' ' : ''}shares · ${b.price_per_share != null ? money(b.shares * b.price_per_share, b.currency) : 'value unknown'}`;
+    default:
+      return b.liquidity === 'Locked until age' ? (b.unlock_age ? `Unlocks at ${b.unlock_age}` : 'Add the unlock age') : '';
+  }
+}
 
 /** Credit cards and loans each get their own bill line under Operating expenses. */
 async function ensureBillLine(id: string, name: string, type: string, tags: Tag[]) {
@@ -235,7 +276,9 @@ async function ensureBillLine(id: string, name: string, type: string, tags: Tag[
   await save('tags', { kind: 'opex', name: line, default_bucket_id: id, sort: tags.length + 1 });
 }
 
-function AccountCard({ b, tags, groups, group, hasGroups, run }: { b: Bucket; tags: Tag[]; groups: AccountGroup[]; group?: AccountGroup; hasGroups: boolean; run: Run }) {
+function AccountCard({ b, tags, groups, group, hasGroups, run, open, onToggle }: {
+  b: Bucket; tags: Tag[]; groups: AccountGroup[]; group?: AccountGroup; hasGroups: boolean; run: Run; open: boolean; onToggle: () => void;
+}) {
   const set = (row: Record<string, unknown>) => run(() => save('buckets', row, b.id));
   function moveTo(id: string) {
     const g = groups.find((x) => x.id === id);
@@ -245,6 +288,22 @@ function AccountCard({ b, tags, groups, group, hasGroups, run }: { b: Bucket; ta
       await save('buckets', { type, is_liability: isLiability(type), ...(hasGroups ? { group_id: g.id } : {}) }, b.id);
       await ensureBillLine(b.id, b.name, type, tags);
     });
+  }
+  const label = group?.name ?? typeName(b.type);
+  if (!open) {
+    const line = summary(b);
+    return (
+      <article className={`card acct folded t-${b.type} ${b.active ? '' : 'archived'}`}>
+        <button className="acct-fold" aria-expanded={false} onClick={onToggle}>
+          <span className="acct-badge">{currencyLabel(b.currency)}</span>
+          <span className="acct-title">
+            <strong>{b.name}</strong>
+            <span className="small muted">{label}{line ? ` · ${line}` : ''}</span>
+          </span>
+          <span className="chev" aria-hidden="true">›</span>
+        </button>
+      </article>
+    );
   }
   return (
     <article className={`card acct t-${b.type} ${b.active ? '' : 'archived'}`}>
@@ -277,11 +336,15 @@ function AccountCard({ b, tags, groups, group, hasGroups, run }: { b: Bucket; ta
       )}
       {b.active && (b.type === 'Card' || b.type === 'Loan') && <AccountDates b={b} run={run} />}
       {b.active && b.type === 'Insurance' && <SurrenderValue b={b} run={run} />}
+      {b.active && b.type === 'Equity' && <Shares b={b} run={run} />}
       <div className="acct-meta">
         <span className="muted small">{group && group.starter === false ? `Works like: ${typeName(b.type)}` : ''}</span>
-        <button className="link small" onClick={() => set({ active: !b.active })}>
-          {b.active ? 'Close account' : 'Reopen'}
-        </button>
+        <span className="acct-actions">
+          <button className="link small" onClick={() => set({ active: !b.active })}>
+            {b.active ? 'Close account' : 'Reopen'}
+          </button>
+          <button className="btn ghost small-btn" onClick={onToggle}>Done</button>
+        </span>
       </div>
     </article>
   );
@@ -307,6 +370,46 @@ function SurrenderValue({ b, run }: { b: Bucket; run: Run }) {
   );
 }
 
+/** Private equity: shares held. The value is optional; leave it blank if you don't know it. */
+function Shares({ b, run }: { b: Bucket; run: Run }) {
+  const saveIf = (field: keyof Bucket, v: unknown) => v !== b[field] && run(() => save('buckets', { [field]: v }, b.id));
+  const numOrNull = (v: string) => (v.trim() === '' ? null : Number(v.replace(/,/g, '')));
+  return (
+    <>
+      <div className="account-dates">
+        <label className="field">
+          <span>Shares held</span>
+          <input inputMode="decimal" placeholder="e.g. 12,000" defaultValue={b.shares ?? ''} onBlur={(e) => saveIf('shares', numOrNull(e.target.value))} />
+        </label>
+        <label className="field">
+          <span>Share class <em className="muted">(optional)</em></span>
+          <input list="share-classes" placeholder="e.g. Ordinary" defaultValue={b.share_class ?? ''} onBlur={(e) => saveIf('share_class', e.target.value.trim() || null)} />
+          <datalist id="share-classes">
+            <option value="Ordinary" /><option value="Preferred" /><option value="Options" /><option value="RSUs" />
+          </datalist>
+        </label>
+        <label className="field">
+          <span>Value per share ({currencyLabel(b.currency)}) <em className="muted">(optional)</em></span>
+          <input inputMode="decimal" placeholder="Unknown" defaultValue={b.price_per_share ?? ''} onBlur={(e) => saveIf('price_per_share', numOrNull(e.target.value))} />
+        </label>
+        <label className="field">
+          <span>As of <em className="muted">(e.g. last round)</em></span>
+          <input type="date" defaultValue={b.price_on ?? ''} onBlur={(e) => saveIf('price_on', e.target.value || null)} />
+        </label>
+      </div>
+      {b.shares != null && (
+        <div className="loan-summary">
+          <span className="small">
+            {b.price_per_share != null
+              ? <>Worth about <strong className="num">{money(b.shares * b.price_per_share, b.currency)}</strong></>
+              : <><strong>Value unknown.</strong> <span className="muted">Kept as shares only and left out of totals until you add a value.</span></>}
+          </span>
+        </div>
+      )}
+    </>
+  );
+}
+
 /** Your own account groups: rename, reorder, choose what each works like. */
 function Groups({ groups, hasGroups, buckets, run }: { groups: AccountGroup[]; hasGroups: boolean; buckets: Bucket[]; run: Run }) {
   const [name, setName] = useState('');
@@ -320,6 +423,9 @@ function Groups({ groups, hasGroups, buckets, run }: { groups: AccountGroup[]; h
     );
   }
   const count = (id: string) => buckets.filter((b) => b.group_id === id).length;
+  const [showUnused, setShowUnused] = useState(false);
+  const unused = groups.filter((g) => g.starter && count(g.id) === 0);
+  const shown = showUnused ? groups : groups.filter((g) => !unused.includes(g));
   function add(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim()) return;
@@ -336,9 +442,9 @@ function Groups({ groups, hasGroups, buckets, run }: { groups: AccountGroup[]; h
   }
   return (
     <div className="stack">
-      <p className="muted small">Groups are how accounts are sorted here and, later, on Net Worth. "Works like" decides how its accounts behave, e.g. credit cards get a bill line and loans get a schedule.</p>
+      <p className="muted small">Groups label each account and, later, break down Net Worth. "Works like" decides how its accounts behave, e.g. credit cards get a bill line and loans get a schedule.</p>
       <ul className="group-list">
-        {groups.map((g, i) => (
+        {shown.map((g) => { const i = groups.indexOf(g); return (
           <li key={g.id} className={`card t-${g.base_type}`}>
             <span className="swatch" aria-hidden="true" />
             <input aria-label={`Rename ${g.name}`} defaultValue={g.name}
@@ -353,8 +459,13 @@ function Groups({ groups, hasGroups, buckets, run }: { groups: AccountGroup[]; h
               {count(g.id) === 0 && <button className="link small" onClick={() => run(() => removeGroup(g.id))}>Delete</button>}
             </span>
           </li>
-        ))}
+        ); })}
       </ul>
+      {unused.length > 0 && (
+        <button className="link" onClick={() => setShowUnused(!showUnused)}>
+          {showUnused ? 'Hide unused built-in groups' : `Show ${unused.length} unused built-in groups`}
+        </button>
+      )}
       <form className="card stack acct-new" onSubmit={add}>
         <h2>Add a group</h2>
         <input placeholder="e.g. Alternative Investment" value={name} onChange={(e) => setName(e.target.value)} />

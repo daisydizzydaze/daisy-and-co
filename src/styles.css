@@ -13,6 +13,7 @@
   --peach: #F8BF97;
   --sand: #E6CFA6;
   --teal: #9FD9D6;
+  --lime: #D2E59A;
   --good: #2F6B45;
   --bad: #B3261E;
   --radius: 20px;
@@ -336,6 +337,10 @@ select {
 .t-Property { --accent: var(--sand); }
 .t-Insurance { --accent: var(--teal); }
 .t-Other { --accent: var(--line); }
+.t-Equity { --accent: var(--lime); }
+.l-Liquid { --accent: var(--mint); }
+.l-Locked { --accent: var(--lilac); }
+.l-Illiquid { --accent: var(--sand); }
 .acct { background: color-mix(in srgb, var(--accent, var(--line)) 34%, var(--paper)); position: relative; overflow: hidden; }
 .acct::before { content: ''; position: absolute; inset: 0 0 auto 0; height: 10px; background: var(--accent, var(--line)); border-bottom: 1.5px solid var(--ink); }
 .acct-head { padding-top: 6px; }
@@ -370,3 +375,19 @@ select {
   .group-list li { grid-template-columns: auto minmax(0, 1.4fr) minmax(0, 1fr) auto auto; }
   .group-list li > select, .group-list li > .small { grid-column: auto; }
 }
+
+/* Folded account cards: one line each, tap to open. */
+.acct-intro { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.acct-intro p { margin: 0; }
+.acct.folded { padding: 0; gap: 0; }
+.acct-fold { all: unset; box-sizing: border-box; display: flex; align-items: center; gap: 12px; width: 100%; padding: 18px 16px 12px; cursor: pointer; min-height: 56px; }
+.acct-fold:focus-visible { outline: 3px solid var(--ink); outline-offset: -3px; border-radius: var(--radius); }
+.acct-title { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.acct-title strong { font-family: var(--display); font-size: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.acct-title .small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chev { font-size: 22px; line-height: 1; font-weight: 700; }
+.acct-actions { display: flex; align-items: center; gap: 14px; }
+.group-title .muted { font-weight: 600; letter-spacing: 0; }
+.acct.folded::before { height: 6px; }
+.acct-grid { align-items: start; }
+.acct-title .small { white-space: normal; }
