@@ -151,7 +151,8 @@ export function AllocationScreen({ month, setMonth, tags, buckets }: Props) {
       {!data ? (
         <p className="muted center">Opening the books…</p>
       ) : (
-        <>
+        <div className="alloc-layout">
+          <aside className="side">
           <section className="card hero" key={`hero-${month}`}>
             <div className="hero-text">
               <span className="eyebrow">Saving rate</span>
@@ -172,6 +173,18 @@ export function AllocationScreen({ month, setMonth, tags, buckets }: Props) {
 
           {net > 0 && <SplitBar net={net} opex={s!.opex_planned} cash={s!.quick_cash} growth={s!.growth} key={`bar-${month}`} />}
 
+          {usedCurrencies.length > 0 && (
+            <div className="later">
+              <RatesCard month={month} currencies={usedCurrencies} rates={data.fx} error={fxError} onSaved={reload} />
+            </div>
+          )}
+
+          {data.allocations.length === 0 && (
+            <button className="btn later" disabled={busy} onClick={copyFromLast}>
+              Copy {monthName(addMonths(month, -1))}’s plan
+            </button>
+          )}
+          </aside>
 
           <section className="card statement" aria-label="Income statement">
             <Block title="Gross income" hint={`${monthOnly(addMonths(month, -1))} pay and other income for ${monthOnly(month)}`} total={s?.gross_income ?? 0} onAdd={() => setEditing({ kind: 'income' })} addLabel="Add income">
@@ -227,17 +240,7 @@ export function AllocationScreen({ month, setMonth, tags, buckets }: Props) {
               <span className="num">{d.show(unallocated)}</span>
             </div>
           </section>
-
-          {usedCurrencies.length > 0 && (
-            <RatesCard month={month} currencies={usedCurrencies} rates={data.fx} error={fxError} onSaved={reload} />
-          )}
-
-          {data.allocations.length === 0 && (
-            <button className="btn" disabled={busy} onClick={copyFromLast}>
-              Copy {monthName(addMonths(month, -1))}’s plan
-            </button>
-          )}
-        </>
+        </div>
       )}
 
       {editing?.kind === 'income' && (

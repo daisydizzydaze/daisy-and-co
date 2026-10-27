@@ -39,11 +39,15 @@ export function SetupScreen({ tags, buckets, onChange }: { tags: Tag[]; buckets:
 
       {error && <p className="error card" role="alert">{error}</p>}
 
-      {tab === 'tags'
-        ? KINDS.map((k) => (
+      {tab === 'tags' ? (
+        <div className="tag-groups">
+          {KINDS.map((k) => (
             <TagGroup key={k} kind={k} tags={tags.filter((t) => t.kind === k)} buckets={buckets} run={run} />
-          ))
-        : <Accounts buckets={buckets} run={run} />}
+          ))}
+        </div>
+      ) : (
+        <Accounts buckets={buckets} run={run} />
+      )}
     </div>
   );
 }
