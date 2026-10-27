@@ -450,3 +450,15 @@ select {
 .acct:has(.select-pop) { z-index: 5; }
 .acct-fields > .selectfield:first-child { grid-column: 1 / -1; }
 .acct .select-btn:not([aria-expanded="true"]) { background-color: var(--paper); }
+
+/* Saving is good news: celebrate it. */
+.seg.opex, .dot.opex { background: var(--peach); }
+.seg.cash, .dot.cash { background: var(--yellow); }
+.seg.growth, .dot.growth { background: var(--mint); }
+.seg + .seg { border-left: 1.5px solid var(--ink); }
+.hero .big { color: var(--good); }
+.hero.win { background: linear-gradient(135deg, color-mix(in srgb, var(--mint) 45%, var(--paper)), color-mix(in srgb, var(--yellow) 35%, var(--paper))); }
+.status.good { background: var(--mint); color: var(--ink); }
+.unallocated.zero { background: color-mix(in srgb, var(--mint) 40%, var(--paper)); }
+.unallocated .tick { display: inline-grid; place-items: center; width: 24px; height: 24px; margin-left: 6px; border-radius: 50%; background: var(--mint); border: 1.5px solid var(--ink); font-size: 13px; vertical-align: 2px; color: var(--ink); }
+.unallocated.zero { border-radius: 0 0 calc(var(--radius) - 1.5px) calc(var(--radius) - 1.5px); }
