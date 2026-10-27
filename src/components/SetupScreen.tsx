@@ -13,13 +13,17 @@ export function SetupScreen({ tags, buckets, onChange }: { tags: Tag[]; buckets:
   const [tab, setTab] = useState<'tags' | 'accounts'>('accounts');
   const [error, setError] = useState<string | null>(null);
 
-  async function run(fn: () => Promise<void>) {
+  // Always reload afterwards, so anything that did save shows up even if a later step failed.
+  async function run(fn: () => Promise<void>): Promise<boolean> {
     setError(null);
     try {
       await fn();
-      onChange();
+      return true;
     } catch (e) {
-      setError((e as Error).message);
+      setError(friendly((e as Error).message));
+      return false;
+    } finally {
+      onChange();
     }
   }
 
@@ -47,13 +51,21 @@ export function SetupScreen({ tags, buckets, onChange }: { tags: Tag[]; buckets:
           ))}
         </div>
       ) : (
-        <Accounts buckets={buckets} tags={tags} run={run} />
+        <Accounts buckets={buckets} tags={tags} run={run} error={error} />
       )}
     </div>
   );
 }
 
-type Run = (fn: () => Promise<void>) => void;
+type Run = (fn: () => Promise<void>) => Promise<boolean>;
+
+/** Turn database errors into something readable. */
+function friendly(msg: string): string {
+  if (msg.includes('buckets_user_id_name_key')) return 'You already have an account with that name. It may be a closed one: tap "Show closed" below to reopen it, or pick another name.';
+  if (msg.includes('tags_user_id_kind_name_key')) return 'There’s already a tag with that name in this group. Pick another name.';
+  if (msg.includes('buckets_type_check')) return 'The database needs the latest update before it can save this type. Run 003_account_types.sql in the Supabase SQL Editor.';
+  return msg;
+}
 
 function TagGroup({ kind, tags, buckets, run }: { kind: TagKind; tags: Tag[]; buckets: Bucket[]; run: Run }) {
   const [name, setName] = useState('');
@@ -108,8 +120,10 @@ function TagGroup({ kind, tags, buckets, run }: { kind: TagKind; tags: Tag[]; bu
   );
 }
 
-function Accounts({ buckets, tags, run }: { buckets: Bucket[]; tags: Tag[]; run: Run }) {
+function Accounts({ buckets, tags, run, error }: { buckets: Bucket[]; tags: Tag[]; run: Run; error: string | null }) {
   const [name, setName] = useState('');
+  const [localError, setLocalError] = useState<string | null>(null);
+  const [showClosed, setShowClosed] = useState(false);
   const [currency, setCurrency] = useState('HKD');
   const [type, setTypeRaw] = useState('Card');
   const [liquidity, setLiquidity] = useState('Liquid');
@@ -119,14 +133,21 @@ function Accounts({ buckets, tags, run }: { buckets: Bucket[]; tags: Tag[]; run:
     e.preventDefault();
     if (!name.trim()) return;
     const n = name.trim();
+    const same = buckets.find((b) => b.name.toLowerCase() === n.toLowerCase());
+    if (same) {
+      setLocalError(same.active
+        ? `You already have an account called “${same.name}”. Pick another name, e.g. “${n} 2”.`
+        : `“${same.name}” is a closed account. Reopen it below, or pick another name.`);
+      if (!same.active) setShowClosed(true);
+      return;
+    }
+    setLocalError(null);
     run(async () => {
       const id = await insertBucket({ name: n, currency, type, liquidity, is_liability: isLiability(type), sort: buckets.length + 1 });
       await ensureBillLine(id, n, type, tags);
-    });
-    setName('');
+    }).then((ok) => ok && setName(''));
   }
 
-  const [showClosed, setShowClosed] = useState(false);
   const open = buckets.filter((b) => b.active);
   const closed = buckets.filter((b) => !b.active);
   const groups = GROUPS.map((g) => ({ ...g, items: open.filter((b) => g.types.includes(b.type)) })).filter((g) => g.items.length > 0);
@@ -157,6 +178,7 @@ function Accounts({ buckets, tags, run }: { buckets: Bucket[]; tags: Tag[]; run:
             {LIQUIDITY.map((c) => <option key={c}>{c}</option>)}
           </select>
         </div>
+        {(localError || error) && <p className="error" role="alert">{localError || error}</p>}
         <button className="btn primary">Add account</button>
       </form>
 
@@ -188,7 +210,11 @@ const defaultLiquidity = (type: string) => (type === 'Retirement' ? 'Locked unti
 /** Credit cards and loans each get their own bill line under Operating expenses. */
 async function ensureBillLine(id: string, name: string, type: string, tags: Tag[]) {
   if (!isLiability(type) || tags.some((t) => t.kind === 'opex' && t.default_bucket_id === id)) return;
-  await save('tags', { kind: 'opex', name: `${name} ${type === 'Card' ? 'bill' : 'repayment'}`, default_bucket_id: id, sort: tags.length + 1 });
+  const base = `${name} ${type === 'Card' ? 'bill' : 'repayment'}`;
+  const taken = new Set(tags.filter((t) => t.kind === 'opex').map((t) => t.name.toLowerCase()));
+  let line = base;
+  for (let i = 2; taken.has(line.toLowerCase()); i++) line = `${base} ${i}`;
+  await save('tags', { kind: 'opex', name: line, default_bucket_id: id, sort: tags.length + 1 });
 }
 
 function AccountCard({ b, tags, run }: { b: Bucket; tags: Tag[]; run: Run }) {
