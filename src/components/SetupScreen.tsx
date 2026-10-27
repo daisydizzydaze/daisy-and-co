@@ -29,7 +29,7 @@ export function SetupScreen({ tags, buckets, onChange }: { tags: Tag[]; buckets:
           <span className="eyebrow">Settings</span>
           <h1>Accounts &amp; tags</h1>
         </div>
-        <button className="btn ghost small-btn" onClick={() => supabase.auth.signOut()}>Sign out</button>
+        <button className="btn ghost small-btn push-right" onClick={() => supabase.auth.signOut()}>Sign out</button>
       </header>
 
       <div className="segmented" role="tablist">
@@ -127,28 +127,26 @@ function Accounts({ buckets, tags, run }: { buckets: Bucket[]; tags: Tag[]; run:
     setName('');
   }
 
+  const [showClosed, setShowClosed] = useState(false);
+  const open = buckets.filter((b) => b.active);
+  const closed = buckets.filter((b) => !b.active);
+  const groups = GROUPS.map((g) => ({ ...g, items: open.filter((b) => g.types.includes(b.type)) })).filter((g) => g.items.length > 0);
+
   return (
-    <section className="card stack">
-      <h2>Accounts</h2>
-      <p className="muted small">Bank accounts, cards, loans and investment pots. Each card and loan has its own line under Operating expenses.</p>
-      <ul className="tag-list accounts">
-        {buckets.map((b) => (
-          <li key={b.id} className={b.active ? '' : 'archived'}>
-            <input
-              aria-label={`Rename ${b.name}`}
-              defaultValue={b.name}
-              onBlur={(e) => e.target.value.trim() && e.target.value !== b.name && run(() => save('buckets', { name: e.target.value.trim() }, b.id))}
-            />
-            <span className="muted small nowrap">{b.currency} · {b.type} · {b.liquidity}</span>
-            <button className="btn ghost small-btn" onClick={() => run(() => save('buckets', { active: !b.active }, b.id))}>
-              {b.active ? 'Close' : 'Reopen'}
-            </button>
-            {b.active && (b.type === 'Card' || b.type === 'Loan') && <AccountDates b={b} run={run} />}
-          </li>
-        ))}
-      </ul>
-      <form className="stack" onSubmit={add}>
-        <input placeholder="New account, e.g. DBS Multiplier" value={name} onChange={(e) => setName(e.target.value)} />
+    <div className="stack">
+      <p className="muted small">Each card and loan has its own bill line under Operating expenses.</p>
+      {groups.map((g) => (
+        <section key={g.label} className="stack" aria-label={g.label}>
+          <h2 className="group-title">{g.label}</h2>
+          <div className="acct-grid">
+            {g.items.map((b) => <AccountCard key={b.id} b={b} run={run} />)}
+          </div>
+        </section>
+      ))}
+
+      <form className="card stack acct-new" onSubmit={add}>
+        <h2>Add an account</h2>
+        <input placeholder="Name, e.g. DBS Multiplier" value={name} onChange={(e) => setName(e.target.value)} />
         <div className="grid3">
           <select aria-label="Currency" value={currency} onChange={(e) => setCurrency(e.target.value)}>
             {CURRENCIES.map((c) => <option key={c}>{c}</option>)}
@@ -162,7 +160,47 @@ function Accounts({ buckets, tags, run }: { buckets: Bucket[]; tags: Tag[]; run:
         </div>
         <button className="btn primary">Add account</button>
       </form>
-    </section>
+
+      {closed.length > 0 && (
+        <>
+          <button className="link" onClick={() => setShowClosed(!showClosed)}>
+            {showClosed ? 'Hide closed accounts' : `Show ${closed.length} closed`}
+          </button>
+          {showClosed && <div className="acct-grid">{closed.map((b) => <AccountCard key={b.id} b={b} run={run} />)}</div>}
+        </>
+      )}
+    </div>
+  );
+}
+
+const GROUPS = [
+  { label: 'Credit cards', types: ['Card'] },
+  { label: 'Loans', types: ['Loan'] },
+  { label: 'Cash and bank', types: ['Cash'] },
+  { label: 'Investments and retirement', types: ['Brokerage', 'Retirement'] },
+  { label: 'Other', types: ['Property', 'Insurance', 'Other'] },
+];
+
+function AccountCard({ b, run }: { b: Bucket; run: Run }) {
+  return (
+    <article className={`card acct ${b.active ? '' : 'archived'}`}>
+      <div className="acct-head">
+        <span className="acct-badge">{b.currency}</span>
+        <input
+          className="acct-name"
+          aria-label={`Rename ${b.name}`}
+          defaultValue={b.name}
+          onBlur={(e) => e.target.value.trim() && e.target.value !== b.name && run(() => save('buckets', { name: e.target.value.trim() }, b.id))}
+        />
+      </div>
+      <div className="acct-meta">
+        <span className="muted small">{b.type} · {b.liquidity}</span>
+        <button className="link small" onClick={() => run(() => save('buckets', { active: !b.active }, b.id))}>
+          {b.active ? 'Close account' : 'Reopen'}
+        </button>
+      </div>
+      {b.active && (b.type === 'Card' || b.type === 'Loan') && <AccountDates b={b} run={run} />}
+    </article>
   );
 }
 
