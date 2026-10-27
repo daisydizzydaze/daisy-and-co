@@ -174,17 +174,17 @@ function AccountDates({ b, run }: { b: Bucket; run: Run }) {
     <div className="account-dates">
       {b.type === 'Card' ? (
         <label className="field">
-          <span>Statement closes on day</span>
+          <span>Statement closes (day)</span>
           <input inputMode="numeric" placeholder="Month end" defaultValue={b.statement_day ?? ''} onBlur={(e) => saveIf('statement_day', day(e.target.value))} />
         </label>
       ) : (
         <label className="field">
-          <span>Monthly repayment ({b.currency})</span>
+          <span>Repayment ({b.currency})</span>
           <input inputMode="decimal" placeholder="0" defaultValue={b.monthly_payment ?? ''} onBlur={(e) => saveIf('monthly_payment', e.target.value === '' ? null : Number(e.target.value.replace(/,/g, '')))} />
         </label>
       )}
       <label className="field">
-        <span>Payment due on day</span>
+        <span>Payment due (day)</span>
         <input inputMode="numeric" placeholder="e.g. 5" defaultValue={b.due_day ?? ''} onBlur={(e) => saveIf('due_day', day(e.target.value))} />
       </label>
     </div>

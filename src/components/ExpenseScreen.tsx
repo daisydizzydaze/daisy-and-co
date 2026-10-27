@@ -90,6 +90,7 @@ export function ExpenseScreen({ tags, buckets, onTagsChanged }: Props) {
     reload();
   }
 
+  const wide = typeof window !== 'undefined' && window.matchMedia?.('(min-width: 960px)').matches;
   const mood: Mood = spent.length === 0 ? 'think' : toSettle === 0 ? 'cheer' : 'happy';
   const pickDisplay = (c: DisplayCurrency) => {
     setDisplayCur(c);
@@ -128,16 +129,16 @@ export function ExpenseScreen({ tags, buckets, onTagsChanged }: Props) {
         ) : (
           <div className="alloc-layout">
             <aside className="side">
-              <section className="card hero" key={`hero-${month}`}>
+              <section className="card hero compact" key={`hero-${month}`}>
                 <div className="hero-text">
                   <span className="eyebrow">Spent in {monthOnly(month)}</span>
                   <span className="big num">{d.show(total)}</span>
-                  <span className="muted small">{d.alt(total)}{d.alt(total) ? ' · ' : ''}{counted.length} {counted.length === 1 ? 'charge' : 'charges'}</span>
+                  <span className="muted small">{[d.alt(total), `${counted.length} ${counted.length === 1 ? 'charge' : 'charges'}`].filter(Boolean).join(' · ')}</span>
                   <span className={`status ${spent.length > 0 && toSettle === 0 ? 'good' : ''}`}>
                     {spent.length === 0 ? 'Nothing logged yet' : toSettle === 0 ? 'All settled' : `${toSettle} still on the card`}
                   </span>
                 </div>
-                <Bud mood={mood} size={84} coin={mood === 'cheer'} />
+                <Bud mood={mood} size={64} coin={mood === 'cheer'} />
               </section>
 
               <section className="card stack statements" aria-label="Statements">
@@ -153,7 +154,7 @@ export function ExpenseScreen({ tags, buckets, onTagsChanged }: Props) {
                           <span className="row-main">
                             <span className="tag">{b.name}</span>
                             <span className="muted small">
-                              {[isCard ? closes(month, b.statement_day) : 'cash', due, rows.length === 0 ? 'nothing yet' : isCard ? (open === 0 ? 'settled' : `${open} to settle`) : null].filter(Boolean).join(' · ')}
+                              {[due ?? (isCard ? null : 'cash'), rows.length === 0 ? 'nothing yet' : isCard ? (open === 0 ? 'all settled' : `${open} open`) : null].filter(Boolean).join(' · ')}
                             </span>
                           </span>
                           <span className="row-amt">
@@ -171,12 +172,15 @@ export function ExpenseScreen({ tags, buckets, onTagsChanged }: Props) {
                     );
                   })}
                 </ul>
-                <span className="muted small">Settling a card ticks its bill on {monthOnly(addMonths(month, 1))}’s Monthly Allocation.</span>
+                <span className="muted small wide-only">Settling a card ticks its bill on {monthOnly(addMonths(month, 1))}’s Monthly Allocation.</span>
               </section>
 
               {byCategory.length > 0 && total > 0 && (
-                <section className="card stack later" aria-label="By category">
-                  <h2>By category</h2>
+                <details className="card later cats" open={wide}>
+                  <summary>
+                    <h2>By category</h2>
+                    <span className="muted small">{tagById.get(byCategory[0][0])?.name ?? 'Uncategorised'} {d.show(byCategory[0][1])}{byCategory.length > 1 ? ` + ${byCategory.length - 1} more` : ''}</span>
+                  </summary>
                   <ul className="cat-list">
                     {byCategory.map(([id, v]) => (
                       <li key={id}>
@@ -186,7 +190,7 @@ export function ExpenseScreen({ tags, buckets, onTagsChanged }: Props) {
                       </li>
                     ))}
                   </ul>
-                </section>
+                </details>
               )}
             </aside>
 
@@ -195,6 +199,7 @@ export function ExpenseScreen({ tags, buckets, onTagsChanged }: Props) {
                 <div className="filters" role="group" aria-label="Filter">
                   {(['all', 'charged', 'settled'] as Filter[]).map((f) => (
                     <button key={f} aria-pressed={filter === f} onClick={() => setFilter(f)}>
+                      {f !== 'all' && <i className={`sdot ${f}`} aria-hidden="true" />}
                       {f === 'all' ? 'All' : f === 'charged' ? 'Charged' : 'Settled'}
                     </button>
                   ))}
@@ -202,9 +207,9 @@ export function ExpenseScreen({ tags, buckets, onTagsChanged }: Props) {
                     <button aria-pressed onClick={() => setAccount('')}>{bucketById.get(account)?.name} ✕</button>
                   )}
                 </div>
-                <button className="btn primary small-btn" onClick={() => setEditing({})}>
+                <button className="btn primary small-btn fab" onClick={() => setEditing({})} aria-label="Log expense">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
-                  Log expense
+                  <span>Log expense</span>
                 </button>
               </div>
 
@@ -243,27 +248,28 @@ export function ExpenseScreen({ tags, buckets, onTagsChanged }: Props) {
 
 function ExpenseRow({ e, tag, account, hkd, month, onEdit }: { e: Expense; tag?: Tag; account?: Bucket; hkd: number | null; month: string; onEdit: () => void }) {
   const d = useDisplay();
+  const cat = tag?.name ?? 'Uncategorised';
   const nextStatement = e.statement_month && e.statement_month !== month;
-  const sub = [e.vendor, account?.name, nextStatement ? `on ${monthOnly(e.statement_month!)} bill` : null, e.reimbursable ? 'to be paid back' : null].filter(Boolean).join(' · ');
+  const sub = [e.vendor ? cat : null, account?.name, nextStatement ? `${shortMonth(e.statement_month!)} bill` : null, e.reimbursable ? 'paid back' : null].filter(Boolean).join(' · ');
+  const amt = Number(e.amount);
+  const status = e.settled_on ? 'settled' : 'charged';
   return (
     <li>
-      <button className="row" onClick={onEdit}>
+      <button className="row xrow" onClick={onEdit} aria-label={`${e.vendor ?? cat}, ${money(amt, e.currency, amt % 1 ? 2 : 0)}, ${status}`}>
         <span className="row-main">
-          <span className="tag">{tag?.name ?? 'Uncategorised'}</span>
-          <span className="muted small">{sub}</span>
+          <span className="tag">{e.vendor || cat}</span>
+          {sub && <span className="muted small">{sub}</span>}
         </span>
         <span className="row-amt">
-          <span className={`num ${e.reimbursable ? 'muted' : ''}`}>{money(Number(e.amount), e.currency, Number(e.amount) % 1 ? 2 : 0)}</span>
-          <span className={`pill ${e.settled_on ? 'settled' : 'charged'}`}>{e.settled_on ? 'Settled' : 'Charged'}</span>
-          {e.currency !== d.cur && hkd !== null && <span className="muted small num">{d.show(hkd)}</span>}
+          <span className={`num ${e.reimbursable ? 'muted' : ''}`}>{money(amt, e.currency, amt % 1 ? 2 : 0)}</span>
+          <span className="muted small num">
+            {e.currency !== d.cur && hkd !== null ? d.show(hkd) : ''}
+            <i className={`sdot ${status}`} title={status === 'settled' ? 'Settled' : 'Charged'} />
+          </span>
         </span>
       </button>
     </li>
   );
-}
-
-function closes(month: string, day: number | null) {
-  return day ? `closes ${dayIn(month, day)}` : 'calendar month';
 }
 
 function groupByDay(rows: Expense[]): [string, Expense[]][] {
