@@ -54,7 +54,7 @@ export function App() {
       {error && <p className="error card" role="alert">{error}</p>}
       <main>
         {view === 'allocation' ? (
-          <AllocationScreen month={month} setMonth={setMonth} tags={tags} buckets={buckets} />
+          <AllocationScreen month={month} setMonth={setMonth} tags={tags} buckets={buckets} onTagsChanged={reloadSetup} />
         ) : (
           <SetupScreen tags={tags} buckets={buckets} onChange={reloadSetup} />
         )}

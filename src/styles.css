@@ -185,3 +185,36 @@ input:focus-visible, select:focus-visible, button:focus-visible { outline: 3px s
 .show-in button:disabled { opacity: 0.4; cursor: default; }
 .totals { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
 .alt-total { font-family: var(--body); font-weight: 400; }
+
+/* ---------- layout: phone first, two columns on desktop ---------- */
+.alloc-layout { display: flex; flex-direction: column; gap: 14px; }
+.side { display: contents; }
+.alloc-layout .statement { order: 1; }
+.alloc-layout .later { order: 2; }
+.tag-groups { display: flex; flex-direction: column; gap: 14px; }
+
+@media (min-width: 960px) {
+  .app { padding: 0 0 0 112px; }
+  .screen { max-width: 1120px; padding: 32px 40px 48px; gap: 18px; }
+  .month-nav { justify-content: flex-start; gap: 16px; }
+  .month-title { align-items: flex-start; }
+  .show-in { margin-bottom: 0; }
+
+  .alloc-layout { display: grid; grid-template-columns: 360px minmax(0, 1fr); gap: 24px; align-items: start; }
+  .side { display: flex; flex-direction: column; gap: 14px; position: sticky; top: 24px; }
+  .alloc-layout .statement, .alloc-layout .later { order: 0; }
+  .big { font-size: 52px; }
+  .block { padding: 14px 24px; }
+  .subtotal, .unallocated { padding-left: 24px; padding-right: 24px; }
+  .meter { max-width: 320px; }
+
+  .tag-groups { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
+  .segmented { max-width: 360px; }
+
+  /* the tab bar becomes a slim rail on the left */
+  .tabbar { left: 16px; top: 16px; bottom: 16px; transform: none; width: 80px; max-width: none; grid-template-columns: 1fr; grid-auto-rows: 72px; align-content: start; gap: 6px; padding: 8px; }
+  .tabbar button { min-height: 64px; font-size: 12px; }
+}
+.link.rename { flex-basis: 100%; margin-top: 2px; }
+.rename-row { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.rename-row input { flex: 1 1 200px; width: auto; }

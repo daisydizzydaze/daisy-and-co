@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { copyPlan, loadMonth, save, saveFx, type MonthData } from '../lib/data';
 import { addMonths, money, monthName, monthOnly, pct, shortMonth } from '../lib/format';
 import { fetchRatesToHkd, rateDate } from '../lib/fx';
-import { DisplayContext, makeDisplay, savedDisplay, saveDisplay, useDisplay, type DisplayCurrency } from '../lib/display';
+import { DisplayContext, makeDisplay, savedDisplay, saveDisplay, useDisplay, type Display, type DisplayCurrency } from '../lib/display';
 import type { Allocation, Bucket, Income, Section, Tag } from '../lib/types';
 import { Bud, type Mood } from './Bud';
 import { AllocationSheet, IncomeSheet } from './LineSheets';
@@ -31,9 +31,10 @@ interface Props {
   setMonth: (m: string) => void;
   tags: Tag[];
   buckets: Bucket[];
+  onTagsChanged: () => void;
 }
 
-export function AllocationScreen({ month, setMonth, tags, buckets }: Props) {
+export function AllocationScreen({ month, setMonth, tags, buckets, onTagsChanged }: Props) {
   const [data, setData] = useState<MonthData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<Editing>(null);
@@ -72,6 +73,7 @@ export function AllocationScreen({ month, setMonth, tags, buckets }: Props) {
   const usedCurrencies = useMemo(() => {
     if (!data) return [];
     const used = new Set<string>([...data.income.map((i) => i.currency), ...data.allocations.map((a) => a.currency)]);
+    used.add('SGD'); // always needed for the SGD view
     return [...used].filter((c) => c !== 'HKD').sort();
   }, [data]);
   const thisMonthRate = (c: string) => data?.fx.find((f) => f.currency === c && f.month === month);
@@ -112,8 +114,11 @@ export function AllocationScreen({ month, setMonth, tags, buckets }: Props) {
     setBusy(false);
   }
 
-  const sgdRate = data?.fx.find((f) => f.currency === 'SGD')?.rate_to_hkd;
-  const d = makeDisplay(displayCur, sgdRate ? Number(sgdRate) : null);
+  // Latest rate on or before this month for each currency (data.fx is newest first).
+  const rates: Record<string, number> = {};
+  data?.fx.forEach((f) => { if (!(f.currency in rates)) rates[f.currency] = Number(f.rate_to_hkd); });
+  const sgdRate = rates.SGD;
+  const d = makeDisplay(displayCur, rates);
   const pickDisplay = (c: DisplayCurrency) => {
     setDisplayCur(c);
     saveDisplay(c);
@@ -151,7 +156,8 @@ export function AllocationScreen({ month, setMonth, tags, buckets }: Props) {
       {!data ? (
         <p className="muted center">Opening the books…</p>
       ) : (
-        <>
+        <div className="alloc-layout">
+          <aside className="side">
           <section className="card hero" key={`hero-${month}`}>
             <div className="hero-text">
               <span className="eyebrow">Saving rate</span>
@@ -172,6 +178,19 @@ export function AllocationScreen({ month, setMonth, tags, buckets }: Props) {
 
           {net > 0 && <SplitBar net={net} opex={s!.opex_planned} cash={s!.quick_cash} growth={s!.growth} key={`bar-${month}`} />}
 
+          {/* Rates are pulled and saved quietly; this only appears if a pull failed. */}
+          {usedCurrencies.some((c) => !rates[c]) && (
+            <div className="later">
+              <RatesCard month={month} currencies={usedCurrencies} rates={data.fx} error={fxError} onSaved={reload} />
+            </div>
+          )}
+
+          {data.allocations.length === 0 && (
+            <button className="btn later" disabled={busy} onClick={copyFromLast}>
+              Copy {monthName(addMonths(month, -1))}’s plan
+            </button>
+          )}
+          </aside>
 
           <section className="card statement" aria-label="Income statement">
             <Block title="Gross income" hint={`${monthOnly(addMonths(month, -1))} pay and other income for ${monthOnly(month)}`} total={s?.gross_income ?? 0} onAdd={() => setEditing({ kind: 'income' })} addLabel="Add income">
@@ -180,7 +199,8 @@ export function AllocationScreen({ month, setMonth, tags, buckets }: Props) {
                   key={i.id}
                   name={tagById.get(i.tag_id)?.name ?? '–'}
                   sub={[i.source, `landed ${i.received_on.slice(8)} ${shortMonth(i.received_on)}`].filter(Boolean).join(' · ')}
-                  native={foreign(i.currency) ? money(Number(i.gross_amount), i.currency) : undefined}
+                  native={Number(i.gross_amount)}
+                  currency={i.currency}
                   amount={hkd.get(`income:${i.id}`)?.amount ?? null}
                   onEdit={() => setEditing({ kind: 'income', row: i })}
                 />
@@ -193,7 +213,8 @@ export function AllocationScreen({ month, setMonth, tags, buckets }: Props) {
                   key={`w-${i.id}`}
                   name="Withheld at source"
                   sub={tagById.get(i.tag_id)?.name}
-                  native={foreign(i.currency) ? money(Number(i.tax_withheld), i.currency) : undefined}
+                  native={Number(i.tax_withheld)}
+                  currency={i.currency}
                   amount={hkd.get(`tax:${i.id}`)?.amount ?? null}
                   onEdit={() => setEditing({ kind: 'income', row: i })}
                 />
@@ -227,32 +248,25 @@ export function AllocationScreen({ month, setMonth, tags, buckets }: Props) {
               <span className="num">{d.show(unallocated)}</span>
             </div>
           </section>
-
-          {usedCurrencies.length > 0 && (
-            <RatesCard month={month} currencies={usedCurrencies} rates={data.fx} error={fxError} onSaved={reload} />
-          )}
-
-          {data.allocations.length === 0 && (
-            <button className="btn" disabled={busy} onClick={copyFromLast}>
-              Copy {monthName(addMonths(month, -1))}’s plan
-            </button>
-          )}
-        </>
+        </div>
       )}
 
       {editing?.kind === 'income' && (
-        <IncomeSheet month={month} row={editing.row} tags={tags} buckets={buckets} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); reload(); }} />
+        <IncomeSheet month={month} row={editing.row} tags={tags} buckets={buckets} onTagsChanged={onTagsChanged} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); reload(); }} />
       )}
       {editing?.kind === 'alloc' && (
-        <AllocationSheet month={month} section={editing.section} row={editing.row} tags={tags} buckets={buckets} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); reload(); }} />
+        <AllocationSheet month={month} section={editing.section} row={editing.row} tags={tags} buckets={buckets} onTagsChanged={onTagsChanged} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); reload(); }} />
       )}
     </div>
     </DisplayContext.Provider>
   );
 }
 
-/** Currencies other than the two display ones get their own native line. */
-const foreign = (c: string) => c !== 'HKD' && c !== 'SGD';
+/** Under a line's own amount: its HKD value, or for HKD lines the value in the chosen view. */
+function equivalent(d: Display, currency: string, hkd: number | null | undefined) {
+  if (currency !== 'HKD') return d.inCur(hkd, 'HKD');
+  return d.cur !== 'HKD' ? d.show(hkd) : '';
+}
 
 function Block(props: { title: string; hint: string; total: number; minus?: boolean; accent?: boolean; onAdd: () => void; addLabel: string; children: React.ReactNode }) {
   const d = useDisplay();
@@ -277,7 +291,7 @@ function Block(props: { title: string; hint: string; total: number; minus?: bool
   );
 }
 
-function Row({ name, sub, native, amount, onEdit }: { name: string; sub?: string | null; native?: string; amount: number | null; onEdit: () => void }) {
+function Row({ name, sub, native, currency, amount, onEdit }: { name: string; sub?: string | null; native: number; currency: string; amount: number | null; onEdit: () => void }) {
   const d = useDisplay();
   return (
     <li>
@@ -287,8 +301,8 @@ function Row({ name, sub, native, amount, onEdit }: { name: string; sub?: string
           {sub && <span className="muted small">{sub}</span>}
         </span>
         <span className="row-amt">
-          <span className="num">{d.show(amount)}</span>
-          <span className="muted small num">{[native, d.alt(amount)].filter(Boolean).join(' · ')}</span>
+          <span className="num">{money(native, currency)}</span>
+          <span className="muted small num">{equivalent(d, currency, amount)}</span>
         </span>
       </button>
     </li>
@@ -313,17 +327,17 @@ function AllocRow({ a, tag, bucket, hkd, showActual, onEdit, onToggle }: {
           <span className="tag">{tag?.name ?? '–'}</span>
           <span className="muted small">{[bucket ? `to ${bucket.name}` : null, a.note].filter(Boolean).join(' · ') || (a.done ? 'moved' : 'planned')}</span>
           {showActual && (
-            <span className="meter" aria-label={`Spent ${d.show(actual)} of ${d.show(planned)}`}>
+            <span className="meter" aria-label={`Spent ${d.inCur(actual, a.currency)} of ${money(Number(a.amount), a.currency)}`}>
               <span className={`grow ${over ? 'over' : ''}`} style={{ width: `${(over ? 1 : ratio) * 100}%` }} />
             </span>
           )}
         </span>
         <span className="row-amt">
-          <span className="num">{d.show(hkd?.amount ?? null)}</span>
+          <span className="num">{money(Number(a.amount), a.currency)}</span>
           {showActual ? (
-            <span className={`small ${over ? 'bad-text' : 'muted'}`}>{d.show(actual)} spent</span>
+            <span className={`small ${over ? 'bad-text' : 'muted'}`}>{d.inCur(actual, a.currency) || money(actual)} spent</span>
           ) : (
-            <span className="muted small num">{[foreign(a.currency) ? money(Number(a.amount), a.currency) : null, d.alt(hkd?.amount ?? null)].filter(Boolean).join(' · ')}</span>
+            <span className="muted small num">{equivalent(d, a.currency, hkd?.amount ?? null)}</span>
           )}
         </span>
       </button>
