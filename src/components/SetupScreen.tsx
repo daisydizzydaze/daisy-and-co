@@ -136,7 +136,7 @@ function Accounts({ buckets, tags, run }: { buckets: Bucket[]; tags: Tag[]; run:
       <p className="muted small">Each card and loan has its own bill line under Operating expenses.</p>
       {groups.map((g) => (
         <section key={g.label} className="stack" aria-label={g.label}>
-          <h2 className="group-title">{g.label}</h2>
+          <h2 className={`group-title t-${g.types[0]}`}>{g.label}</h2>
           <div className="acct-grid">
             {g.items.map((b) => <AccountCard key={b.id} b={b} tags={tags} run={run} />)}
           </div>
@@ -194,7 +194,7 @@ async function ensureBillLine(id: string, name: string, type: string, tags: Tag[
 function AccountCard({ b, tags, run }: { b: Bucket; tags: Tag[]; run: Run }) {
   const set = (row: Record<string, unknown>) => run(() => save('buckets', row, b.id));
   return (
-    <article className={`card acct ${b.active ? '' : 'archived'}`}>
+    <article className={`card acct t-${b.type} ${b.active ? '' : 'archived'}`}>
       <div className="acct-head">
         <span className="acct-badge">{b.currency}</span>
         <input
