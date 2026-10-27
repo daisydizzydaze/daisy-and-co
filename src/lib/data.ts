@@ -1,6 +1,6 @@
 import { supabase } from './supabase';
 import { addMonths } from './format';
-import type { Allocation, Bucket, Expense, FxRate, Income, Line, Statement, Tag } from './types';
+import { setCurrencies, type AccountGroup, type Allocation, type Bucket, type Expense, type FxRate, type Income, type Line, type Statement, type Tag } from './types';
 
 function check<T>(res: { data: T | null; error: { message: string } | null }): T {
   if (res.error) throw new Error(res.error.message);
@@ -17,12 +17,37 @@ export interface MonthData {
   bills: Expense[];
 }
 
-export async function loadSetup(): Promise<{ tags: Tag[]; buckets: Bucket[] }> {
-  const [tags, buckets] = await Promise.all([
+export async function loadSetup(): Promise<{ tags: Tag[]; buckets: Bucket[]; groups: AccountGroup[]; currencies: string[] }> {
+  const [tags, buckets, groups, settings] = await Promise.all([
     supabase.from('tags').select('*').order('kind').order('sort').order('name'),
     supabase.from('buckets').select('*').order('sort').order('name'),
+    supabase.from('account_groups').select('*').order('sort').order('name'),
+    supabase.from('settings').select('*').maybeSingle(),
   ]);
-  return { tags: check(tags) ?? [], buckets: check(buckets) ?? [] };
+  // Groups and the currency list arrive with migration 004; until then, fall back quietly.
+  const s = settings.data as { currencies?: string[] } | null;
+  if (s?.currencies?.length) setCurrencies(s.currencies);
+  return {
+    tags: check(tags) ?? [],
+    buckets: check(buckets) ?? [],
+    groups: groups.error ? [] : (groups.data as AccountGroup[]) ?? [],
+    currencies: s?.currencies ?? [],
+  };
+}
+
+export async function saveCurrencies(list: string[]) {
+  const res = await supabase.from('settings').update({ currencies: list }).not('user_id', 'is', null);
+  if (res.error) throw new Error(res.error.message);
+}
+
+export async function saveGroup(row: Row, id?: string) {
+  const res = id ? await supabase.from('account_groups').update(row).eq('id', id) : await supabase.from('account_groups').insert(row);
+  if (res.error) throw new Error(res.error.message);
+}
+
+export async function removeGroup(id: string) {
+  const res = await supabase.from('account_groups').delete().eq('id', id);
+  if (res.error) throw new Error(res.error.message);
 }
 
 export async function loadMonth(month: string): Promise<MonthData> {

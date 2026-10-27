@@ -22,6 +22,9 @@ export interface Bucket {
   unlock_age: number | null;
   is_liability: boolean;
   active: boolean;
+  group_id: string | null;
+  surrender_value: number | null; // insurance: cash value if surrendered today
+  surrender_value_on: string | null;
   statement_day: number | null; // cards: day the statement closes (empty = month end)
   due_day: number | null; // cards and loans: day the payment is due
   monthly_payment: number | null; // loans: the repayment each period
@@ -104,7 +107,22 @@ export interface FxRate {
   rate_to_hkd: number;
 }
 
-export const CURRENCIES = ['HKD', 'SGD', 'USD', 'TWD'];
+/** Your currency list (from Settings). Updated in place when settings load. */
+export const CURRENCIES: string[] = ['HKD', 'SGD', 'USD', 'TWD', 'CNY'];
+export function setCurrencies(list: string[]) {
+  const clean = [...new Set(['HKD', ...list.map((c) => c.toUpperCase())])];
+  CURRENCIES.splice(0, CURRENCIES.length, ...clean);
+}
+/** How a currency is named in pickers: CNY shows as RMB. */
+export const currencyLabel = (c: string) => (c === 'CNY' ? 'RMB' : c);
+
+export interface AccountGroup {
+  id: string;
+  name: string;
+  base_type: string; // which built-in type its accounts behave like
+  sort: number;
+  starter?: boolean; // the built-in group for its type
+}
 
 /** Account types as stored, with the names shown in the app. */
 export const ACCOUNT_TYPES: { value: string; label: string }[] = [

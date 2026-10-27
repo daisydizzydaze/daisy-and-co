@@ -1,16 +1,20 @@
 import { useState } from 'react';
-import { insertBucket, save } from '../lib/data';
+import { insertBucket, removeGroup, save, saveCurrencies, saveGroup } from '../lib/data';
+import { fetchRatesToHkd } from '../lib/fx';
 import { money, monthName, todayISO } from '../lib/format';
 import { firstPaymentFor, loanStatus } from '../lib/loan';
 import { supabase } from '../lib/supabase';
-import { ACCOUNT_TYPES, CURRENCIES, KIND_LABEL, type Bucket, type Tag, type TagKind } from '../lib/types';
+import { ACCOUNT_TYPES, CURRENCIES, currencyLabel, KIND_LABEL, type AccountGroup, type Bucket, type Tag, type TagKind } from '../lib/types';
 
 const KINDS: TagKind[] = ['income', 'tax', 'opex', 'reserve', 'growth', 'expense'];
 const LINKED: TagKind[] = ['opex', 'reserve', 'growth'];
 const LIQUIDITY = ['Liquid', 'Locked until age', 'Illiquid'];
 
-export function SetupScreen({ tags, buckets, onChange }: { tags: Tag[]; buckets: Bucket[]; onChange: () => void }) {
-  const [tab, setTab] = useState<'tags' | 'accounts'>('accounts');
+export function SetupScreen({ tags, buckets, groups: saved, onChange }: { tags: Tag[]; buckets: Bucket[]; groups: AccountGroup[]; onChange: () => void }) {
+  const [tab, setTab] = useState<'tags' | 'accounts' | 'groups' | 'currencies'>('accounts');
+  // Before migration 004 there are no saved groups: use the built-in ones.
+  const groups = saved.length ? saved : FALLBACK_GROUPS;
+  const hasGroups = saved.length > 0;
   const [error, setError] = useState<string | null>(null);
 
   // Always reload afterwards, so anything that did save shows up even if a later step failed.
@@ -37,8 +41,10 @@ export function SetupScreen({ tags, buckets, onChange }: { tags: Tag[]; buckets:
         <button className="btn ghost small-btn push-right" onClick={() => supabase.auth.signOut()}>Sign out</button>
       </header>
 
-      <div className="segmented" role="tablist">
+      <div className="segmented four" role="tablist">
         <button role="tab" aria-selected={tab === 'accounts'} onClick={() => setTab('accounts')}>Accounts</button>
+        <button role="tab" aria-selected={tab === 'groups'} onClick={() => setTab('groups')}>Groups</button>
+        <button role="tab" aria-selected={tab === 'currencies'} onClick={() => setTab('currencies')}>Currencies</button>
         <button role="tab" aria-selected={tab === 'tags'} onClick={() => setTab('tags')}>Tags</button>
       </div>
 
@@ -50,8 +56,12 @@ export function SetupScreen({ tags, buckets, onChange }: { tags: Tag[]; buckets:
             <TagGroup key={k} kind={k} tags={tags.filter((t) => t.kind === k)} buckets={buckets} run={run} />
           ))}
         </div>
+      ) : tab === 'groups' ? (
+        <Groups groups={groups} hasGroups={hasGroups} buckets={buckets} run={run} />
+      ) : tab === 'currencies' ? (
+        <Currencies buckets={buckets} run={run} />
       ) : (
-        <Accounts buckets={buckets} tags={tags} run={run} error={error} />
+        <Accounts buckets={buckets} tags={tags} groups={groups} hasGroups={hasGroups} run={run} error={error} />
       )}
     </div>
   );
@@ -63,6 +73,8 @@ type Run = (fn: () => Promise<void>) => Promise<boolean>;
 function friendly(msg: string): string {
   if (msg.includes('buckets_user_id_name_key')) return 'You already have an account with that name. It may be a closed one: tap "Show closed" below to reopen it, or pick another name.';
   if (msg.includes('tags_user_id_kind_name_key')) return 'There’s already a tag with that name in this group. Pick another name.';
+  if (msg.includes('account_groups_user_id_name_key')) return 'You already have a group with that name.';
+  if (msg.includes('account_groups') || msg.includes('group_id') || msg.includes('surrender_value') || msg.includes('currencies')) return 'The database needs the latest update first. Run 004_groups_currencies.sql in the Supabase SQL Editor.';
   if (msg.includes('buckets_type_check')) return 'The database needs the latest update before it can save this type. Run 003_account_types.sql in the Supabase SQL Editor.';
   return msg;
 }
@@ -120,18 +132,19 @@ function TagGroup({ kind, tags, buckets, run }: { kind: TagKind; tags: Tag[]; bu
   );
 }
 
-function Accounts({ buckets, tags, run, error }: { buckets: Bucket[]; tags: Tag[]; run: Run; error: string | null }) {
+function Accounts({ buckets, tags, groups, hasGroups, run, error }: { buckets: Bucket[]; tags: Tag[]; groups: AccountGroup[]; hasGroups: boolean; run: Run; error: string | null }) {
   const [name, setName] = useState('');
   const [localError, setLocalError] = useState<string | null>(null);
   const [showClosed, setShowClosed] = useState(false);
+  const [groupId, setGroupIdRaw] = useState(groups[0]?.id ?? '');
+  const group = groups.find((g) => g.id === groupId) ?? groups[0];
   const [currency, setCurrency] = useState('HKD');
-  const [type, setTypeRaw] = useState('Card');
-  const [liquidity, setLiquidity] = useState('Liquid');
-  const setType = (t: string) => { setTypeRaw(t); setLiquidity(defaultLiquidity(t)); };
+  const [liquidity, setLiquidity] = useState(defaultLiquidity(group?.base_type ?? 'Card'));
+  const setGroupId = (id: string) => { setGroupIdRaw(id); setLiquidity(defaultLiquidity(groups.find((g) => g.id === id)?.base_type ?? 'Other')); };
 
   function add(e: React.FormEvent) {
     e.preventDefault();
-    if (!name.trim()) return;
+    if (!name.trim() || !group) return;
     const n = name.trim();
     const same = buckets.find((b) => b.name.toLowerCase() === n.toLowerCase());
     if (same) {
@@ -142,24 +155,26 @@ function Accounts({ buckets, tags, run, error }: { buckets: Bucket[]; tags: Tag[
       return;
     }
     setLocalError(null);
+    const type = group.base_type;
     run(async () => {
-      const id = await insertBucket({ name: n, currency, type, liquidity, is_liability: isLiability(type), sort: buckets.length + 1 });
+      const id = await insertBucket({ name: n, currency, type, liquidity, is_liability: isLiability(type), sort: buckets.length + 1, ...(hasGroups ? { group_id: group.id } : {}) });
       await ensureBillLine(id, n, type, tags);
     }).then((ok) => ok && setName(''));
   }
 
   const open = buckets.filter((b) => b.active);
   const closed = buckets.filter((b) => !b.active);
-  const groups = GROUPS.map((g) => ({ ...g, items: open.filter((b) => g.types.includes(b.type)) })).filter((g) => g.items.length > 0);
+  const groupOf = (b: Bucket) => groups.find((g) => g.id === b.group_id) ?? groups.find((g) => g.base_type === b.type) ?? groups[groups.length - 1];
+  const sections = groups.map((g) => ({ g, items: open.filter((b) => groupOf(b)?.id === g.id) })).filter((x) => x.items.length > 0);
 
   return (
     <div className="stack">
-      <p className="muted small">Each card and loan has its own bill line under Operating expenses.</p>
-      {groups.map((g) => (
-        <section key={g.label} className="stack" aria-label={g.label}>
-          <h2 className={`group-title t-${g.types[0]}`}>{g.label}</h2>
+      <p className="muted small">Each card and loan has its own bill line under Operating expenses. Add or rename groups under Groups.</p>
+      {sections.map(({ g, items }) => (
+        <section key={g.id} className="stack" aria-label={g.name}>
+          <h2 className={`group-title t-${g.base_type}`}>{g.name}</h2>
           <div className="acct-grid">
-            {g.items.map((b) => <AccountCard key={b.id} b={b} tags={tags} run={run} />)}
+            {items.map((b) => <AccountCard key={b.id} b={b} tags={tags} groups={groups} group={groupOf(b)} hasGroups={hasGroups} run={run} />)}
           </div>
         </section>
       ))}
@@ -169,10 +184,10 @@ function Accounts({ buckets, tags, run, error }: { buckets: Bucket[]; tags: Tag[
         <input placeholder="Name, e.g. DBS Multiplier" value={name} onChange={(e) => setName(e.target.value)} />
         <div className="grid3">
           <select aria-label="Currency" value={currency} onChange={(e) => setCurrency(e.target.value)}>
-            {CURRENCIES.map((c) => <option key={c}>{c}</option>)}
+            {CURRENCIES.map((c) => <option key={c} value={c}>{currencyLabel(c)}</option>)}
           </select>
-          <select aria-label="Type" value={type} onChange={(e) => setType(e.target.value)}>
-            {ACCOUNT_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+          <select aria-label="Group" value={group?.id ?? ''} onChange={(e) => setGroupId(e.target.value)}>
+            {groups.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
           </select>
           <select aria-label="Liquidity" value={liquidity} onChange={(e) => setLiquidity(e.target.value)}>
             {LIQUIDITY.map((c) => <option key={c}>{c}</option>)}
@@ -187,21 +202,24 @@ function Accounts({ buckets, tags, run, error }: { buckets: Bucket[]; tags: Tag[
           <button className="link" onClick={() => setShowClosed(!showClosed)}>
             {showClosed ? 'Hide closed accounts' : `Show ${closed.length} closed`}
           </button>
-          {showClosed && <div className="acct-grid">{closed.map((b) => <AccountCard key={b.id} b={b} tags={tags} run={run} />)}</div>}
+          {showClosed && <div className="acct-grid">{closed.map((b) => <AccountCard key={b.id} b={b} tags={tags} groups={groups} group={groupOf(b)} hasGroups={hasGroups} run={run} />)}</div>}
         </>
       )}
     </div>
   );
 }
 
-const GROUPS = [
-  { label: 'Credit cards', types: ['Card'] },
-  { label: 'Bank accounts and debit cards', types: ['Bank'] },
-  { label: 'Cash', types: ['Cash'] },
-  { label: 'Loans', types: ['Loan'] },
-  { label: 'Investments', types: ['Brokerage'] },
-  { label: 'Retirement and pension', types: ['Retirement'] },
-  { label: 'Other', types: ['Property', 'Insurance', 'Other'] },
+/** Used until migration 004 adds saved groups. */
+const FALLBACK_GROUPS: AccountGroup[] = [
+  { id: 'Card', name: 'Credit cards', base_type: 'Card', sort: 10, starter: true },
+  { id: 'Bank', name: 'Bank accounts and debit cards', base_type: 'Bank', sort: 20, starter: true },
+  { id: 'Cash', name: 'Cash', base_type: 'Cash', sort: 30, starter: true },
+  { id: 'Loan', name: 'Loans', base_type: 'Loan', sort: 40, starter: true },
+  { id: 'Brokerage', name: 'Investments', base_type: 'Brokerage', sort: 50, starter: true },
+  { id: 'Retirement', name: 'Retirement and pension', base_type: 'Retirement', sort: 60, starter: true },
+  { id: 'Property', name: 'Property', base_type: 'Property', sort: 70, starter: true },
+  { id: 'Insurance', name: 'Insurance', base_type: 'Insurance', sort: 80, starter: true },
+  { id: 'Other', name: 'Other', base_type: 'Other', sort: 90, starter: true },
 ];
 
 const isLiability = (type: string) => type === 'Card' || type === 'Loan';
@@ -217,12 +235,21 @@ async function ensureBillLine(id: string, name: string, type: string, tags: Tag[
   await save('tags', { kind: 'opex', name: line, default_bucket_id: id, sort: tags.length + 1 });
 }
 
-function AccountCard({ b, tags, run }: { b: Bucket; tags: Tag[]; run: Run }) {
+function AccountCard({ b, tags, groups, group, hasGroups, run }: { b: Bucket; tags: Tag[]; groups: AccountGroup[]; group?: AccountGroup; hasGroups: boolean; run: Run }) {
   const set = (row: Record<string, unknown>) => run(() => save('buckets', row, b.id));
+  function moveTo(id: string) {
+    const g = groups.find((x) => x.id === id);
+    if (!g) return;
+    const type = g.base_type;
+    run(async () => {
+      await save('buckets', { type, is_liability: isLiability(type), ...(hasGroups ? { group_id: g.id } : {}) }, b.id);
+      await ensureBillLine(b.id, b.name, type, tags);
+    });
+  }
   return (
     <article className={`card acct t-${b.type} ${b.active ? '' : 'archived'}`}>
       <div className="acct-head">
-        <span className="acct-badge">{b.currency}</span>
+        <span className="acct-badge">{currencyLabel(b.currency)}</span>
         <input
           className="acct-name"
           aria-label={`Rename ${b.name}`}
@@ -231,17 +258,11 @@ function AccountCard({ b, tags, run }: { b: Bucket; tags: Tag[]; run: Run }) {
         />
       </div>
       <div className="acct-fields">
-        <select aria-label={`Type of ${b.name}`} value={b.type} onChange={(e) => {
-          const type = e.target.value;
-          run(async () => {
-            await save('buckets', { type, is_liability: isLiability(type) }, b.id);
-            await ensureBillLine(b.id, b.name, type, tags);
-          });
-        }}>
-          {ACCOUNT_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+        <select aria-label={`Group of ${b.name}`} value={group?.id ?? ''} onChange={(e) => moveTo(e.target.value)}>
+          {groups.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
         </select>
         <select aria-label={`Currency of ${b.name}`} value={b.currency} onChange={(e) => set({ currency: e.target.value })}>
-          {CURRENCIES.map((c) => <option key={c}>{c}</option>)}
+          {[...new Set([...CURRENCIES, b.currency])].map((c) => <option key={c} value={c}>{currencyLabel(c)}</option>)}
         </select>
         <select aria-label={`Liquidity of ${b.name}`} value={b.liquidity} onChange={(e) => set({ liquidity: e.target.value })}>
           {LIQUIDITY.map((c) => <option key={c}>{c}</option>)}
@@ -255,13 +276,147 @@ function AccountCard({ b, tags, run }: { b: Bucket; tags: Tag[]; run: Run }) {
         </label>
       )}
       {b.active && (b.type === 'Card' || b.type === 'Loan') && <AccountDates b={b} run={run} />}
+      {b.active && b.type === 'Insurance' && <SurrenderValue b={b} run={run} />}
       <div className="acct-meta">
-        <span />
+        <span className="muted small">{group && group.starter === false ? `Works like: ${typeName(b.type)}` : ''}</span>
         <button className="link small" onClick={() => set({ active: !b.active })}>
           {b.active ? 'Close account' : 'Reopen'}
         </button>
       </div>
     </article>
+  );
+}
+
+const typeName = (t: string) => ACCOUNT_TYPES.find((x) => x.value === t)?.label ?? t;
+
+/** Insurance: what you'd get back if you surrendered the policy, and when you checked. */
+function SurrenderValue({ b, run }: { b: Bucket; run: Run }) {
+  const saveIf = (field: keyof Bucket, v: unknown) => v !== b[field] && run(() => save('buckets', { [field]: v }, b.id));
+  return (
+    <div className="account-dates">
+      <label className="field">
+        <span>Surrender value ({currencyLabel(b.currency)})</span>
+        <input inputMode="decimal" placeholder="0" defaultValue={b.surrender_value ?? ''}
+          onBlur={(e) => saveIf('surrender_value', e.target.value.trim() === '' ? null : Number(e.target.value.replace(/,/g, '')))} />
+      </label>
+      <label className="field">
+        <span>As of</span>
+        <input type="date" defaultValue={b.surrender_value_on ?? ''} onBlur={(e) => saveIf('surrender_value_on', e.target.value || null)} />
+      </label>
+    </div>
+  );
+}
+
+/** Your own account groups: rename, reorder, choose what each works like. */
+function Groups({ groups, hasGroups, buckets, run }: { groups: AccountGroup[]; hasGroups: boolean; buckets: Bucket[]; run: Run }) {
+  const [name, setName] = useState('');
+  const [base, setBase] = useState('Brokerage');
+  if (!hasGroups) {
+    return (
+      <section className="card stack">
+        <h2>Groups</h2>
+        <p className="muted">To add your own groups, run <strong>004_groups_currencies.sql</strong> in the Supabase SQL Editor, then refresh.</p>
+      </section>
+    );
+  }
+  const count = (id: string) => buckets.filter((b) => b.group_id === id).length;
+  function add(e: React.FormEvent) {
+    e.preventDefault();
+    if (!name.trim()) return;
+    const sort = Math.max(0, ...groups.map((g) => g.sort)) + 10;
+    run(() => saveGroup({ name: name.trim(), base_type: base, sort })).then((ok) => ok && setName(''));
+  }
+  function move(i: number, dir: -1 | 1) {
+    const a = groups[i], b = groups[i + dir];
+    if (!a || !b) return;
+    run(async () => {
+      await saveGroup({ sort: b.sort }, a.id);
+      await saveGroup({ sort: a.sort === b.sort ? b.sort + dir : a.sort }, b.id);
+    });
+  }
+  return (
+    <div className="stack">
+      <p className="muted small">Groups are how accounts are sorted here and, later, on Net Worth. "Works like" decides how its accounts behave, e.g. credit cards get a bill line and loans get a schedule.</p>
+      <ul className="group-list">
+        {groups.map((g, i) => (
+          <li key={g.id} className={`card t-${g.base_type}`}>
+            <span className="swatch" aria-hidden="true" />
+            <input aria-label={`Rename ${g.name}`} defaultValue={g.name}
+              onBlur={(e) => e.target.value.trim() && e.target.value !== g.name && run(() => saveGroup({ name: e.target.value.trim() }, g.id))} />
+            <select aria-label={`${g.name} works like`} value={g.base_type} onChange={(e) => run(() => saveGroup({ base_type: e.target.value }, g.id))}>
+              {ACCOUNT_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+            </select>
+            <span className="muted small nowrap">{count(g.id)} {count(g.id) === 1 ? 'account' : 'accounts'}</span>
+            <span className="group-actions">
+              <button className="icon-btn small" aria-label={`Move ${g.name} up`} disabled={i === 0} onClick={() => move(i, -1)}>↑</button>
+              <button className="icon-btn small" aria-label={`Move ${g.name} down`} disabled={i === groups.length - 1} onClick={() => move(i, 1)}>↓</button>
+              {count(g.id) === 0 && <button className="link small" onClick={() => run(() => removeGroup(g.id))}>Delete</button>}
+            </span>
+          </li>
+        ))}
+      </ul>
+      <form className="card stack acct-new" onSubmit={add}>
+        <h2>Add a group</h2>
+        <input placeholder="e.g. Alternative Investment" value={name} onChange={(e) => setName(e.target.value)} />
+        <label className="field">
+          <span>Works like</span>
+          <select value={base} onChange={(e) => setBase(e.target.value)}>
+            {ACCOUNT_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+          </select>
+        </label>
+        <button className="btn primary">Add group</button>
+      </form>
+    </div>
+  );
+}
+
+/** The currencies offered in every picker. */
+function Currencies({ buckets, run }: { buckets: Bucket[]; run: Run }) {
+  const [code, setCode] = useState('');
+  const [err, setErr] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const inUse = new Set(buckets.map((b) => b.currency));
+  async function add(e: React.FormEvent) {
+    e.preventDefault();
+    const c = code.trim().toUpperCase() === 'RMB' ? 'CNY' : code.trim().toUpperCase();
+    if (!/^[A-Z]{3}$/.test(c)) return setErr('Use the 3-letter code, e.g. CNY for RMB, JPY, EUR.');
+    if (CURRENCIES.includes(c)) return setErr(`${currencyLabel(c)} is already on the list.`);
+    setBusy(true);
+    setErr(null);
+    try {
+      const got = await fetchRatesToHkd('latest', [c]);
+      if (!got[c]) throw new Error('unknown');
+    } catch {
+      setBusy(false);
+      return setErr(`Couldn’t find exchange rates for ${c}. Check the code.`);
+    }
+    const ok = await run(() => saveCurrencies([...CURRENCIES, c]));
+    setBusy(false);
+    if (ok) setCode('');
+  }
+  return (
+    <div className="stack">
+      <section className="card stack">
+        <h2>Your currencies</h2>
+        <p className="muted small">These show up in every currency picker. Rates are pulled once a month and saved. Amounts are always added up in HKD.</p>
+        <ul className="cur-list">
+          {CURRENCIES.map((c) => (
+            <li key={c} className="chip on">
+              <strong>{currencyLabel(c)}</strong>{c === 'CNY' && <span className="muted small"> CNY</span>}
+              {c !== 'HKD' && !inUse.has(c) && (
+                <button className="x" aria-label={`Remove ${currencyLabel(c)}`} onClick={() => run(() => saveCurrencies(CURRENCIES.filter((x) => x !== c)))}>×</button>
+              )}
+            </li>
+          ))}
+        </ul>
+        <form className="add-row" onSubmit={add}>
+          <input aria-label="Currency code" placeholder="Add a code, e.g. JPY, EUR" value={code} maxLength={3} onChange={(e) => setCode(e.target.value)} />
+          <button className="btn primary small-btn" disabled={busy}>{busy ? 'Checking…' : 'Add'}</button>
+        </form>
+        {err && <p className="error" role="alert">{err}</p>}
+        <p className="muted small">A currency used by one of your accounts can’t be removed.</p>
+      </section>
+    </div>
   );
 }
 

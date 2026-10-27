@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { remove, save } from '../lib/data';
 import { addMonths, budgetMonthFor, money, monthName, monthOnly, todayISO } from '../lib/format';
-import { CURRENCIES, type Allocation, type Bucket, type Income, type Section, type Tag } from '../lib/types';
+import { CURRENCIES, currencyLabel, type Allocation, type Bucket, type Income, type Section, type Tag } from '../lib/types';
 import { Sheet } from './Sheet';
 
 interface Common {
@@ -254,7 +254,7 @@ export function CurrencyField({ value, onChange }: { value: string; onChange: (c
       {CURRENCIES.map((c) => (
         <label key={c} className={`chip ${value === c ? 'on' : ''}`}>
           <input type="radio" name="currency" value={c} checked={value === c} onChange={() => onChange(c)} />
-          {c}
+          {currencyLabel(c)}
         </label>
       ))}
     </fieldset>
