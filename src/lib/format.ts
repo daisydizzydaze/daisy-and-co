@@ -40,7 +40,9 @@ export function todayISO(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-const SYMBOL: Record<string, string> = { HKD: 'HK$', SGD: 'S$', USD: 'US$', TWD: 'NT$' };
+const SYMBOL: Record<string, string> = {
+  HKD: 'HK$', SGD: 'S$', USD: 'US$', TWD: 'NT$', CNY: 'RMB ', EUR: '€', GBP: '£', JPY: 'JP¥', AUD: 'A$', CAD: 'C$', NZD: 'NZ$', CHF: 'CHF ', KRW: '₩', MYR: 'RM ', THB: '฿',
+};
 
 export function money(n: number | null | undefined, currency = 'HKD', digits = 0): string {
   if (n === null || n === undefined || Number.isNaN(n)) return '–';

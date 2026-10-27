@@ -11,6 +11,9 @@
   --sky: #AFCFF2;
   --lilac: #D3C2F2;
   --peach: #F8BF97;
+  --sand: #E6CFA6;
+  --teal: #9FD9D6;
+  --lime: #D2E59A;
   --good: #2F6B45;
   --bad: #B3261E;
   --radius: 20px;
@@ -331,7 +334,13 @@ select {
 .t-Loan { --accent: var(--peach); }
 .t-Brokerage { --accent: var(--sky); }
 .t-Retirement { --accent: var(--lilac); }
-.t-Property, .t-Insurance, .t-Other { --accent: var(--line); }
+.t-Property { --accent: var(--sand); }
+.t-Insurance { --accent: var(--teal); }
+.t-Other { --accent: var(--line); }
+.t-Equity { --accent: var(--lime); }
+.l-Liquid { --accent: var(--mint); }
+.l-Locked { --accent: var(--lilac); }
+.l-Illiquid { --accent: var(--sand); }
 .acct { background: color-mix(in srgb, var(--accent, var(--line)) 34%, var(--paper)); position: relative; overflow: hidden; }
 .acct::before { content: ''; position: absolute; inset: 0 0 auto 0; height: 10px; background: var(--accent, var(--line)); border-bottom: 1.5px solid var(--ink); }
 .acct-head { padding-top: 6px; }
@@ -346,3 +355,39 @@ select {
   .acct-new .grid3 { grid-template-columns: 1fr 1fr; }
   .acct-new .grid3 > select:nth-child(2) { grid-column: 1 / -1; order: -1; }
 }
+
+/* Settings: four tabs, groups and currencies */
+.segmented.four { grid-template-columns: repeat(4, 1fr); }
+.segmented.four button { font-size: 14px; padding: 0 4px; }
+@media (min-width: 960px) { .segmented.four { max-width: 520px; } }
+.group-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.group-list li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 8px 10px; align-items: center; padding: 12px 14px; background: color-mix(in srgb, var(--accent, var(--line)) 34%, var(--paper)); }
+.group-list li > select { grid-column: 2 / -1; }
+.group-list li > .small { grid-column: 2; }
+.group-actions { display: flex; align-items: center; gap: 4px; justify-self: end; }
+.icon-btn.small { width: 36px; height: 36px; border: 1.5px solid var(--ink); background: var(--paper); font-weight: 700; }
+.icon-btn.small:disabled { opacity: 0.3; }
+.swatch { width: 14px; height: 14px; border-radius: 4px; border: 1.5px solid var(--ink); background: var(--accent, var(--line)); }
+.cur-list { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.cur-list .chip { gap: 6px; cursor: default; }
+.cur-list .x { border: none; background: none; font-size: 18px; line-height: 1; cursor: pointer; padding: 0 0 0 4px; }
+@media (min-width: 700px) {
+  .group-list li { grid-template-columns: auto minmax(0, 1.4fr) minmax(0, 1fr) auto auto; }
+  .group-list li > select, .group-list li > .small { grid-column: auto; }
+}
+
+/* Folded account cards: one line each, tap to open. */
+.acct-intro { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.acct-intro p { margin: 0; }
+.acct.folded { padding: 0; gap: 0; }
+.acct-fold { all: unset; box-sizing: border-box; display: flex; align-items: center; gap: 12px; width: 100%; padding: 18px 16px 12px; cursor: pointer; min-height: 56px; }
+.acct-fold:focus-visible { outline: 3px solid var(--ink); outline-offset: -3px; border-radius: var(--radius); }
+.acct-title { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.acct-title strong { font-family: var(--display); font-size: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.acct-title .small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chev { font-size: 22px; line-height: 1; font-weight: 700; }
+.acct-actions { display: flex; align-items: center; gap: 14px; }
+.group-title .muted { font-weight: 600; letter-spacing: 0; }
+.acct.folded::before { height: 6px; }
+.acct-grid { align-items: start; }
+.acct-title .small { white-space: normal; }
