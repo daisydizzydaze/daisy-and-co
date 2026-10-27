@@ -7,6 +7,10 @@
   --pink: #F2B8C6;
   --pink-ink: #9B4A60;
   --yellow: #F7D774;
+  --mint: #A9DDBF;
+  --sky: #AFCFF2;
+  --lilac: #D3C2F2;
+  --peach: #F8BF97;
   --good: #2F6B45;
   --bad: #B3261E;
   --radius: 20px;
@@ -319,3 +323,26 @@ select {
 .acct-new { padding: 18px 20px; gap: 14px; }
 .acct-new .grid3 { gap: 10px; }
 @media (min-width: 1200px) { .acct-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* Account colours: each type gets its own soft accent */
+.t-Card { --accent: var(--pink); }
+.t-Bank { --accent: var(--mint); }
+.t-Cash { --accent: var(--yellow); }
+.t-Loan { --accent: var(--peach); }
+.t-Brokerage { --accent: var(--sky); }
+.t-Retirement { --accent: var(--lilac); }
+.t-Property, .t-Insurance, .t-Other { --accent: var(--line); }
+.acct { background: color-mix(in srgb, var(--accent, var(--line)) 34%, var(--paper)); position: relative; overflow: hidden; }
+.acct::before { content: ''; position: absolute; inset: 0 0 auto 0; height: 10px; background: var(--accent, var(--line)); border-bottom: 1.5px solid var(--ink); }
+.acct-head { padding-top: 6px; }
+.acct .acct-badge { background: var(--paper); }
+.acct select, .acct input:not(.acct-name) { background-color: var(--paper); }
+.acct .loan-summary { background: var(--paper); }
+.acct .meter > span { background: var(--ink); }
+.group-title { display: flex; align-items: center; gap: 8px; }
+.group-title::before { content: ''; width: 12px; height: 12px; border-radius: 4px; border: 1.5px solid var(--ink); background: var(--accent, var(--line)); }
+.acct-new { background: var(--paper); }
+@media (max-width: 699px) {
+  .acct-new .grid3 { grid-template-columns: 1fr 1fr; }
+  .acct-new .grid3 > select:nth-child(2) { grid-column: 1 / -1; order: -1; }
+}
