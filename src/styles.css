@@ -142,7 +142,7 @@ input:focus-visible, select:focus-visible, button:focus-visible { outline: 3px s
 .add-row { display: flex; gap: 8px; }
 
 /* ---------- sheet ---------- */
-.sheet { border: none; padding: 0; margin: auto auto 0; width: 100%; max-width: 560px; max-height: 92dvh; background: transparent; }
+.sheet { border: none; padding: 0; margin: auto auto 0; width: 100%; max-width: 560px; max-height: 92dvh; overflow-y: auto; background: transparent; }
 .sheet::backdrop { background: rgb(22 21 19 / 0.35); }
 .sheet-body { background: var(--bg); border: 1.5px solid var(--ink); border-bottom: none; border-radius: 24px 24px 0 0; padding: 16px 16px calc(20px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 12px; }
 .sheet-head { display: flex; justify-content: space-between; align-items: center; }
@@ -169,3 +169,11 @@ input:focus-visible, select:focus-visible, button:focus-visible { outline: 3px s
 @media (prefers-reduced-motion: reduce) {
   .ink ellipse, .ink circle, .ink path, .grow, .sheet[open] .sheet-body { animation: none; stroke-dashoffset: 0; }
 }
+
+/* ---------- month header + rates ---------- */
+.funded { margin-top: 4px; font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 999px; border: 1.5px solid var(--ink); background: var(--pink); }
+.fx { background: var(--paper); }
+.fx.warn { background: var(--yellow); }
+.fx-head { display: flex; justify-content: space-between; align-items: center; }
+.fx-list { list-style: none; margin: 4px 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.fx-list li { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
