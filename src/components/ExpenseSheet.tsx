@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { commas, fmtNum } from '../lib/numInput';
 import { DateField } from './DateField';
 import { remove, save } from '../lib/data';
 import { monthName, statementMonth, todayISO } from '../lib/format';
@@ -35,14 +36,14 @@ export function ExpenseSheet({ row, tags, buckets, defaultDate, onClose, onSaved
   const remembered = accounts.find((b) => b.id === lastPaidWith())?.id;
   const [paidFrom, setPaidFrom] = useState(row?.paid_from ?? remembered ?? accounts[0]?.id ?? '');
   const account = buckets.find((b) => b.id === paidFrom);
-  const [amount, setAmount] = useState(row ? String(row.amount) : '');
+  const [amount, setAmount] = useState(row ? fmtNum(row.amount) : '');
   const [currency, setCurrencyRaw] = useState(row?.currency ?? account?.currency ?? lastCurrency('expense', 'HKD'));
   const [currencyTouched, setCurrencyTouched] = useState(!!row);
   const setCurrency = (c: string) => { setCurrencyRaw(c); setCurrencyTouched(true); };
   const [tagId, setTagId] = useState(row?.tag_id ?? cats[0]?.id ?? '');
   const [spentOn, setSpentOn] = useState(row?.spent_on ?? defaultDate ?? todayISO());
   const [vendor, setVendor] = useState(row?.vendor ?? '');
-  const [charged, setCharged] = useState(row?.charged_amount != null ? String(row.charged_amount) : '');
+  const [charged, setCharged] = useState(row?.charged_amount != null ? fmtNum(row.charged_amount) : '');
   const [settled, setSettled] = useState(row ? row.settled_on !== null : PAYS_AT_ONCE.includes(account?.type ?? ''));
   const [reimbursable, setReimbursable] = useState(row?.reimbursable ?? false);
   const [note, setNote] = useState(row?.note ?? '');
@@ -84,7 +85,7 @@ export function ExpenseSheet({ row, tags, buckets, defaultDate, onClose, onSaved
       <form className="stack" onSubmit={submit}>
         <label className="field">
           <span>Amount ({currency})</span>
-          <input inputMode="decimal" required autoFocus={!row} value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0" />
+          <input inputMode="decimal" required autoFocus={!row} value={amount} onChange={(e) => { commas(e); setAmount(e.target.value); }} placeholder="0" />
         </label>
         <CurrencyField value={currency} onChange={setCurrency} />
         {cats.length > 0 && <TagPicker label="Category" tags={cats} value={tagId} onChange={setTagId} onRenamed={onTagsChanged} />}
@@ -103,7 +104,7 @@ export function ExpenseSheet({ row, tags, buckets, defaultDate, onClose, onSaved
         {foreign && (
           <label className="field">
             <span>Card billed, in {account!.currency} <em className="muted">(optional, once you see it)</em></span>
-            <input inputMode="decimal" value={charged} onChange={(e) => setCharged(e.target.value)} placeholder="Converted at the month’s rate if empty" />
+            <input inputMode="decimal" value={charged} onChange={(e) => { commas(e); setCharged(e.target.value); }} placeholder="Converted at the month’s rate if empty" />
           </label>
         )}
 

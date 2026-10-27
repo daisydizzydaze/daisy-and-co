@@ -144,7 +144,7 @@ input:focus-visible, select:focus-visible, button:focus-visible { outline: 3px s
 .tag-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
 .tag-list li { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .tag-list li > input { flex: 1 1 160px; }
-.tag-list li > select { flex: 1 1 140px; width: auto; }
+.tag-list li > select, .tag-list li > .selectfield { flex: 1 1 140px; width: auto; }
 .tag-list li.archived input { color: var(--muted); text-decoration: line-through; }
 .add-row { display: flex; gap: 8px; }
 
@@ -399,7 +399,7 @@ select {
 .date-btn[aria-expanded="true"] { background: var(--yellow); }
 .date-required { position: absolute; left: 12px; bottom: 0; width: 1px; height: 1px; min-height: 0; padding: 0; border: 0; opacity: 0; pointer-events: none; }
 .date-pop { position: absolute; z-index: 60; top: calc(100% + 6px); left: 0; width: 296px; max-width: calc(100vw - 32px); background: var(--paper); border: 1.5px solid var(--ink); border-radius: 18px; box-shadow: 4px 4px 0 var(--ink); padding: 12px; display: flex; flex-direction: column; gap: 8px; }
-.acct-grid > :nth-child(2n) .date-pop { left: auto; right: 0; }
+.date-pop.right { left: auto; right: 0; }
 .date-head { display: flex; align-items: center; justify-content: space-between; }
 .date-title { border: none; background: var(--pink); border-radius: 999px; padding: 6px 12px; font-family: var(--display); font-weight: 700; font-size: 15px; cursor: pointer; color: var(--ink); }
 .date-steps { display: flex; gap: 6px; }
@@ -414,7 +414,7 @@ select {
 .date-month { min-height: 40px; border: 1.5px solid var(--line); border-radius: 12px; background: var(--paper); font: inherit; cursor: pointer; color: var(--ink); }
 .date-month.on { background: var(--pink); border-color: var(--ink); font-weight: 700; }
 .date-foot { display: flex; justify-content: space-between; padding: 2px 4px 0; }
-.acct .date-btn { background-color: var(--paper); }
+.acct .date-btn:not([aria-expanded="true"]) { background-color: var(--paper); }
 .segmented.three { grid-template-columns: repeat(3, 1fr); }
 @media (min-width: 960px) { .segmented.three { max-width: 420px; } }
 .acct-fields > .group-edit { grid-column: 1 / -1; }
@@ -424,3 +424,29 @@ select {
 .add-acct:hover { background: var(--paper); }
 @media (min-width: 960px) { .add-acct { max-width: 560px; } }
 .acct-new-head { display: flex; justify-content: space-between; align-items: baseline; }
+
+/* Let pop-ups such as the date picker spill out of an account card. */
+.acct { overflow: visible; }
+.acct::before { border-radius: calc(var(--radius) - 1.5px) calc(var(--radius) - 1.5px) 0 0; }
+.l-Debts { --accent: var(--peach); }
+.acct:has(.date-pop) { z-index: 5; }
+
+/* App-drawn dropdown, matching the date picker. */
+.selectfield { position: relative; min-width: 0; }
+.select-btn { width: 100%; min-height: 44px; display: flex; align-items: center; justify-content: space-between; gap: 8px; border: 1.5px solid var(--ink); border-radius: 12px; background: var(--paper); padding: 0 12px; font: inherit; font-size: 15px; color: var(--ink); cursor: pointer; text-align: left; }
+.select-btn .select-value { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.select-btn.empty .select-value { color: var(--muted); }
+.select-btn svg { flex: none; }
+.select-btn[aria-expanded="true"] { background: var(--yellow); }
+.select-btn[aria-expanded="true"] svg { transform: rotate(180deg); }
+.select-pop { position: absolute; z-index: 60; top: calc(100% + 6px); left: 0; min-width: 100%; width: max-content; max-width: min(340px, calc(100vw - 32px)); max-height: 280px; overflow-y: auto; margin: 0; padding: 6px; list-style: none; background: var(--paper); border: 1.5px solid var(--ink); border-radius: 16px; box-shadow: 4px 4px 0 var(--ink); }
+.select-pop.right { left: auto; right: 0; }
+.select-pop.up { top: auto; bottom: calc(100% + 6px); }
+.select-pop li { display: flex; justify-content: space-between; align-items: center; gap: 12px; min-height: 40px; padding: 0 12px; border-radius: 10px; cursor: pointer; font-size: 15px; }
+.select-pop li.active { background: color-mix(in srgb, var(--pink) 40%, var(--paper)); }
+.select-pop li.on { background: var(--pink); font-weight: 700; }
+.select-pop li.divider { margin-top: 6px; position: relative; }
+.select-pop li.divider::before { content: ''; position: absolute; left: 8px; right: 8px; top: -4px; border-top: 1.5px dashed var(--line); }
+.acct:has(.select-pop) { z-index: 5; }
+.acct-fields > .selectfield:first-child { grid-column: 1 / -1; }
+.acct .select-btn:not([aria-expanded="true"]) { background-color: var(--paper); }
