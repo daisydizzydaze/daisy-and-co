@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { commas, fmtNum } from '../lib/numInput';
+import { Select } from './Select';
 import { DateField } from './DateField';
 import { insertBucket, removeGroup, save, saveCurrencies, saveGroup } from '../lib/data';
 import { fetchRatesToHkd } from '../lib/fx';
@@ -103,14 +105,12 @@ function TagGroup({ kind, tags, buckets, run }: { kind: TagKind; tags: Tag[]; bu
               onBlur={(e) => e.target.value.trim() && e.target.value !== t.name && run(() => save('tags', { name: e.target.value.trim() }, t.id))}
             />
             {LINKED.includes(kind) && (
-              <select
-                aria-label={`Account for ${t.name}`}
+              <Select
+                label={`Account for ${t.name}`}
                 value={t.default_bucket_id ?? ''}
-                onChange={(e) => run(() => save('tags', { default_bucket_id: e.target.value || null }, t.id))}
-              >
-                <option value="">No account</option>
-                {buckets.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
-              </select>
+                onChange={(v) => run(() => save('tags', { default_bucket_id: v || null }, t.id))}
+                options={[{ value: '', label: 'No account' }, ...buckets.map((b) => ({ value: b.id, label: b.name }))]}
+              />
             )}
             <button className="btn ghost small-btn" onClick={() => run(() => save('tags', { archived: !t.archived }, t.id))}>
               {t.archived ? 'Restore' : 'Archive'}
@@ -170,7 +170,9 @@ function Accounts({ buckets, tags, groups, hasGroups, run, error }: { buckets: B
   const closed = buckets.filter((b) => !b.active);
   const groupOf = (b: Bucket) => groups.find((g) => g.id === b.group_id) ?? groups.find((g) => g.base_type === b.type) ?? groups[groups.length - 1];
   const order = (b: Bucket) => (groupOf(b)?.sort ?? 999) * 1000 + b.sort;
-  const sections = LIQUIDITY.map((l) => ({ l, items: open.filter((b) => (LIQUIDITY.includes(b.liquidity) ? b.liquidity : 'Liquid') === l).sort((a, b) => order(a) - order(b)) }))
+  // Assets by how quickly you can use them; debts on their own.
+  const sectionOf = (b: Bucket) => (isDebt(b) ? 'Debts' : LIQUIDITY.includes(b.liquidity) ? b.liquidity : 'Liquid');
+  const sections = [...LIQUIDITY, 'Debts'].map((l) => ({ l, items: open.filter((b) => sectionOf(b) === l).sort((a, b) => order(a) - order(b)) }))
     .filter((x) => x.items.length > 0);
   const anyOpen = open.some((b) => openIds.has(b.id));
   // A group you made yourself goes away once nothing is in it.
@@ -207,12 +209,10 @@ function Accounts({ buckets, tags, groups, hasGroups, run, error }: { buckets: B
           <input autoFocus placeholder="Name, e.g. DBS Multiplier" value={name} onChange={(e) => setName(e.target.value)} />
           <GroupPicker groups={groups} hasGroups={hasGroups} value={group?.id ?? ''} type={group?.base_type ?? 'Card'} run={run} onPick={setGroupId} />
           <div className="grid2">
-            <select aria-label="Currency" value={currency} onChange={(e) => setCurrency(e.target.value)}>
-              {CURRENCIES.map((c) => <option key={c} value={c}>{currencyLabel(c)}</option>)}
-            </select>
-            <select aria-label="Liquidity" value={liquidity} onChange={(e) => setLiquidity(e.target.value)}>
-              {LIQUIDITY.map((c) => <option key={c}>{c}</option>)}
-            </select>
+            <Select label="Currency" value={currency} onChange={setCurrency} options={CURRENCIES.map((c) => ({ value: c, label: currencyLabel(c) }))} />
+            {!isLiability(group?.base_type ?? '') && (
+              <Select label="Liquidity" value={liquidity} onChange={setLiquidity} options={LIQUIDITY.map((c) => ({ value: c, label: c }))} />
+            )}
           </div>
           {(localError || error) && <p className="error" role="alert">{localError || error}</p>}
           <button className="btn primary">Add account</button>
@@ -246,8 +246,9 @@ const FALLBACK_GROUPS: AccountGroup[] = [
 ];
 
 const isLiability = (type: string) => type === 'Card' || type === 'Loan';
+const isDebt = (b: Bucket) => b.is_liability || isLiability(b.type);
 const defaultLiquidity = (type: string) => (type === 'Retirement' ? 'Locked until age' : type === 'Property' || type === 'Equity' ? 'Illiquid' : 'Liquid');
-const LIQUIDITY_TITLE: Record<string, string> = { Liquid: 'Liquid', 'Locked until age': 'Locked until an age', Illiquid: 'Illiquid' };
+const LIQUIDITY_TITLE: Record<string, string> = { Liquid: 'Liquid', 'Locked until age': 'Locked until an age', Illiquid: 'Illiquid', Debts: 'Debts' };
 
 const ordinal = (d: number) => `${d}${[11, 12, 13].includes(d % 100) ? 'th' : ['th', 'st', 'nd', 'rd'][d % 10] ?? 'th'}`;
 
@@ -324,14 +325,13 @@ function AccountCard({ b, tags, groups, group, hasGroups, run, open, onToggle, t
       </div>
       <div className="acct-fields">
         <GroupPicker groups={groups} hasGroups={hasGroups} value={group?.id ?? ''} type={b.type} run={run} onPick={moveTo} label={`Group of ${b.name}`} />
-        <select aria-label={`Currency of ${b.name}`} value={b.currency} onChange={(e) => set({ currency: e.target.value })}>
-          {[...new Set([...CURRENCIES, b.currency])].map((c) => <option key={c} value={c}>{currencyLabel(c)}</option>)}
-        </select>
-        <select aria-label={`Liquidity of ${b.name}`} value={b.liquidity} onChange={(e) => set({ liquidity: e.target.value })}>
-          {LIQUIDITY.map((c) => <option key={c}>{c}</option>)}
-        </select>
+        <Select label={`Currency of ${b.name}`} value={b.currency} onChange={(v) => set({ currency: v })}
+          options={[...new Set([...CURRENCIES, b.currency])].map((c) => ({ value: c, label: currencyLabel(c) }))} />
+        {!isDebt(b) && (
+          <Select label={`Liquidity of ${b.name}`} value={b.liquidity} onChange={(v) => set({ liquidity: v })} options={LIQUIDITY.map((c) => ({ value: c, label: c }))} />
+        )}
       </div>
-      {b.liquidity === 'Locked until age' && (
+      {!isDebt(b) && b.liquidity === 'Locked until age' && (
         <label className="field inline">
           <span>Unlocks at age</span>
           <input inputMode="numeric" placeholder="e.g. 62" defaultValue={b.unlock_age ?? ''}
@@ -391,9 +391,7 @@ function GroupPicker({ groups, hasGroups, value, type, run, onPick, label = 'Gro
         {mode === 'new' && (
           <label className="field">
             <span>Works like</span>
-            <select value={base} onChange={(e) => setBase(e.target.value)}>
-              {ACCOUNT_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
-            </select>
+            <Select label="Works like" value={base} onChange={setBase} options={ACCOUNT_TYPES} />
           </label>
         )}
         <div className="group-edit-actions">
@@ -404,15 +402,11 @@ function GroupPicker({ groups, hasGroups, value, type, run, onPick, label = 'Gro
     );
   }
   return (
-    <select aria-label={label} value={value} onChange={(e) => choose(e.target.value)}>
-      {groups.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
-      {hasGroups && (
-        <optgroup label="──────────">
-          <option value="__new">+ New group…</option>
-          {current && <option value="__rename">Rename “{current.name}”…</option>}
-        </optgroup>
-      )}
-    </select>
+    <Select label={label} value={value} onChange={choose} options={[
+      ...groups.map((g) => ({ value: g.id, label: g.name })),
+      ...(hasGroups ? [{ value: '__new', label: '+ New group…', divider: true }] : []),
+      ...(hasGroups && current ? [{ value: '__rename', label: `Rename “${current.name}”…` }] : []),
+    ]} />
   );
 }
 
@@ -425,7 +419,7 @@ function SurrenderValue({ b, run }: { b: Bucket; run: Run }) {
     <div className="account-dates">
       <label className="field">
         <span>Surrender value ({currencyLabel(b.currency)})</span>
-        <input inputMode="decimal" placeholder="0" defaultValue={b.surrender_value ?? ''}
+        <input inputMode="decimal" placeholder="0" defaultValue={fmtNum(b.surrender_value)} onInput={commas}
           onBlur={(e) => saveIf('surrender_value', e.target.value.trim() === '' ? null : Number(e.target.value.replace(/,/g, '')))} />
       </label>
       <label className="field">
@@ -433,6 +427,21 @@ function SurrenderValue({ b, run }: { b: Bucket; run: Run }) {
         <DateField label="Surrender value as of" value={b.surrender_value_on ?? ''} onChange={(v) => saveIf('surrender_value_on', v || null)} />
       </label>
     </div>
+  );
+}
+
+const SHARE_CLASSES = ['Ordinary', 'Preferred', 'Options', 'RSUs'];
+
+/** Pick a common share class, or type your own. */
+function ShareClass({ value, onSave }: { value: string; onSave: (v: string) => void }) {
+  const [typing, setTyping] = useState(value !== '' && !SHARE_CLASSES.includes(value));
+  if (typing) {
+    return <input autoFocus={value === ''} placeholder="e.g. Series A preferred" defaultValue={value} onBlur={(e) => { const v = e.target.value.trim(); onSave(v); if (!v) setTyping(false); }} />;
+  }
+  return (
+    <Select label="Share class" value={value} placeholder="Not set"
+      onChange={(v) => (v === '__other' ? setTyping(true) : onSave(v))}
+      options={[{ value: '', label: 'Not set' }, ...SHARE_CLASSES.map((c) => ({ value: c, label: c })), { value: '__other', label: 'Something else…', divider: true }]} />
   );
 }
 
@@ -445,18 +454,15 @@ function Shares({ b, run }: { b: Bucket; run: Run }) {
       <div className="account-dates">
         <label className="field">
           <span>Shares held</span>
-          <input inputMode="decimal" placeholder="e.g. 12,000" defaultValue={b.shares ?? ''} onBlur={(e) => saveIf('shares', numOrNull(e.target.value))} />
+          <input inputMode="decimal" placeholder="e.g. 12,000" defaultValue={fmtNum(b.shares)} onInput={commas} onBlur={(e) => saveIf('shares', numOrNull(e.target.value))} />
         </label>
         <label className="field">
           <span>Share class <em className="muted">(optional)</em></span>
-          <input list="share-classes" placeholder="e.g. Ordinary" defaultValue={b.share_class ?? ''} onBlur={(e) => saveIf('share_class', e.target.value.trim() || null)} />
-          <datalist id="share-classes">
-            <option value="Ordinary" /><option value="Preferred" /><option value="Options" /><option value="RSUs" />
-          </datalist>
+          <ShareClass value={b.share_class ?? ''} onSave={(v) => saveIf('share_class', v || null)} />
         </label>
         <label className="field">
           <span>Value per share ({currencyLabel(b.currency)}) <em className="muted">(optional)</em></span>
-          <input inputMode="decimal" placeholder="Unknown" defaultValue={b.price_per_share ?? ''} onBlur={(e) => saveIf('price_per_share', numOrNull(e.target.value))} />
+          <input inputMode="decimal" placeholder="Unknown" defaultValue={fmtNum(b.price_per_share)} onInput={commas} onBlur={(e) => saveIf('price_per_share', numOrNull(e.target.value))} />
         </label>
         <label className="field">
           <span>As of <em className="muted">(e.g. last round)</em></span>
@@ -554,15 +560,12 @@ function AccountDates({ b, run }: { b: Bucket; run: Run }) {
       <div className="account-dates">
         <label className="field">
           <span>Repayment ({b.currency})</span>
-          <input inputMode="decimal" placeholder="0" defaultValue={b.monthly_payment ?? ''} onBlur={(e) => saveIf('monthly_payment', numOrNull(e.target.value))} />
+          <input inputMode="decimal" placeholder="0" defaultValue={fmtNum(b.monthly_payment)} onInput={commas} onBlur={(e) => saveIf('monthly_payment', numOrNull(e.target.value))} />
         </label>
         <label className="field">
           <span>How often</span>
-          <select value={b.payment_cadence ?? 'monthly'} onChange={(e) => saveIf('payment_cadence', e.target.value)}>
-            <option value="monthly">Monthly</option>
-            <option value="quarterly">Quarterly</option>
-            <option value="yearly">Yearly</option>
-          </select>
+          <Select label="How often" value={b.payment_cadence ?? 'monthly'} onChange={(v) => saveIf('payment_cadence', v)}
+            options={[{ value: 'monthly', label: 'Monthly' }, { value: 'quarterly', label: 'Quarterly' }, { value: 'yearly', label: 'Yearly' }]} />
         </label>
         <label className="field">
           <span>Payments made</span>
@@ -571,7 +574,7 @@ function AccountDates({ b, run }: { b: Bucket; run: Run }) {
         </label>
         <label className="field">
           <span>Out of (total)</span>
-          <input inputMode="numeric" placeholder="e.g. 60" defaultValue={b.term_payments ?? ''} onBlur={(e) => saveIf('term_payments', numOrNull(e.target.value))} />
+          <input inputMode="numeric" placeholder="e.g. 60" defaultValue={fmtNum(b.term_payments)} onInput={commas} onBlur={(e) => saveIf('term_payments', numOrNull(e.target.value))} />
         </label>
         <label className="field">
           <span>Due (day)</span>

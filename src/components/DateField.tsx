@@ -23,6 +23,7 @@ export function DateField({ value, onChange, required, placeholder = 'Pick a dat
   const [y, setY] = useState(Number(start.slice(0, 4)));
   const [m, setM] = useState(Number(start.slice(5, 7)) - 1);
   const box = useRef<HTMLDivElement>(null);
+  const [alignRight, setAlignRight] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -40,6 +41,9 @@ export function DateField({ value, onChange, required, placeholder = 'Pick a dat
       setY(Number(s.slice(0, 4)));
       setM(Number(s.slice(5, 7)) - 1);
       setView('days');
+      // Open towards whichever side has room.
+      const r = box.current?.getBoundingClientRect();
+      setAlignRight(!!r && r.left + 296 > window.innerWidth - 12);
     }
     setOpen(!open);
   }
@@ -67,7 +71,7 @@ export function DateField({ value, onChange, required, placeholder = 'Pick a dat
       </button>
       {required && <input className="date-required" tabIndex={-1} required value={value} onChange={() => {}} aria-hidden="true" />}
       {open && (
-        <div className="date-pop" role="dialog" aria-label="Choose a date" onClick={(e) => e.preventDefault()}>
+        <div className={`date-pop ${alignRight ? 'right' : ''}`} role="dialog" aria-label="Choose a date" onClick={(e) => e.preventDefault()}>
           <div className="date-head">
             <button type="button" className="date-title" onClick={() => setView(view === 'days' ? 'months' : 'days')}>
               {view === 'days' ? `${MONTHS[m]} ${y}` : y} <span aria-hidden="true">▾</span>

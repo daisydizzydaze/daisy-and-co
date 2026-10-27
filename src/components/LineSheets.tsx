@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { commas, fmtNum } from '../lib/numInput';
+import { Select } from './Select';
 import { DateField } from './DateField';
 import { remove, save } from '../lib/data';
 import { addMonths, budgetMonthFor, money, monthName, monthOnly, todayISO } from '../lib/format';
@@ -40,8 +42,8 @@ export function IncomeSheet({ month, row, tags, buckets, onClose, onSaved, onTag
   const [receivedOn, setReceivedOn] = useState(row?.received_on ?? defaultReceived(month));
   const [budgetMonth, setBudgetMonth] = useState(row?.budget_month ?? month);
   const [currency, setCurrency] = useState(row?.currency ?? lastCurrency('income', 'SGD'));
-  const [gross, setGross] = useState(row ? String(row.gross_amount) : '');
-  const [withheld, setWithheld] = useState(row && Number(row.tax_withheld) > 0 ? String(row.tax_withheld) : '');
+  const [gross, setGross] = useState(row ? fmtNum(row.gross_amount) : '');
+  const [withheld, setWithheld] = useState(row && Number(row.tax_withheld) > 0 ? fmtNum(row.tax_withheld) : '');
   const [bucketId, setBucketId] = useState(row?.bucket_id ?? '');
   const [note, setNote] = useState(row?.note ?? '');
   const { busy, error, run } = useSubmit(onSaved);
@@ -82,11 +84,11 @@ export function IncomeSheet({ month, row, tags, buckets, onClose, onSaved, onTag
         <CurrencyField value={currency} onChange={setCurrency} />
         <label className="field">
           <span>Gross amount ({currency})</span>
-          <input inputMode="decimal" required value={gross} onChange={(e) => setGross(e.target.value)} placeholder="0" />
+          <input inputMode="decimal" required value={gross} onChange={(e) => { commas(e); setGross(e.target.value); }} placeholder="0" />
         </label>
         <label className="field">
           <span>Tax withheld before it landed, in {currency} <em className="muted">(optional)</em></span>
-          <input inputMode="decimal" value={withheld} onChange={(e) => setWithheld(e.target.value)} placeholder="0" />
+          <input inputMode="decimal" value={withheld} onChange={(e) => { commas(e); setWithheld(e.target.value); }} placeholder="0" />
         </label>
         <div className="grid2">
           <label className="field">
@@ -95,12 +97,8 @@ export function IncomeSheet({ month, row, tags, buckets, onClose, onSaved, onTag
           </label>
           <label className="field">
             <span>Counts for</span>
-            <select value={budgetMonth} onChange={(e) => setBudgetMonth(e.target.value)}>
-              {[-1, 0, 1, 2].map((n) => {
-                const m = addMonths(month, n);
-                return <option key={m} value={m}>{monthName(m)}</option>;
-              })}
-            </select>
+            <Select label="Counts for" value={budgetMonth} onChange={setBudgetMonth}
+              options={[-1, 0, 1, 2].map((n) => { const m = addMonths(month, n); return { value: m, label: monthName(m) }; })} />
           </label>
         </div>
         <label className="field">
@@ -130,7 +128,7 @@ export function AllocationSheet({ month, section, row, tags, buckets, billFor, o
   const sectionTags = tags.filter((t) => t.kind === section && (!t.archived || t.id === row?.tag_id));
   const first = sectionTags[0];
   const [tagId, setTagId] = useState(row?.tag_id ?? first?.id ?? '');
-  const [amount, setAmount] = useState(row ? String(row.amount) : '');
+  const [amount, setAmount] = useState(row ? fmtNum(row.amount) : '');
   const [currency, setCurrency] = useState(row?.currency ?? bucketCurrency(buckets, first?.default_bucket_id) ?? lastCurrency(section, 'HKD'));
   const [toBucket, setToBucket] = useState(row?.to_bucket_id ?? first?.default_bucket_id ?? '');
   const [done, setDone] = useState(row?.done ?? false);
@@ -177,13 +175,13 @@ export function AllocationSheet({ month, section, row, tags, buckets, billFor, o
         <CurrencyField value={currency} onChange={setCurrency} />
         <label className="field">
           <span>{section === 'opex' ? `Set aside for the ${lastMonth} bill` : 'Amount'} ({currency})</span>
-          <input inputMode="decimal" required value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0" />
+          <input inputMode="decimal" required value={amount} onChange={(e) => { commas(e); setAmount(e.target.value); }} placeholder="0" />
         </label>
         {section === 'opex' && bill !== null && (
           <p className="hint-row muted small">
             Charged in {lastMonth} so far: <strong className="num">{money(bill, currency, 2)}</strong>
             {Math.abs(bill - num(amount || '0')) >= 0.01 && (
-              <button type="button" className="link" onClick={() => setAmount(String(Math.round(bill * 100) / 100))}>Use this</button>
+              <button type="button" className="link" onClick={() => setAmount(fmtNum(Math.round(bill * 100) / 100))}>Use this</button>
             )}
           </p>
         )}
@@ -283,12 +281,8 @@ function BucketField({ label, buckets, value, onChange }: { label: string; bucke
   return (
     <label className="field">
       <span>{label}</span>
-      <select value={value} onChange={(e) => onChange(e.target.value)}>
-        <option value="">Not set</option>
-        {buckets.filter((b) => b.active || b.id === value).map((b) => (
-          <option key={b.id} value={b.id}>{b.name} ({b.currency})</option>
-        ))}
-      </select>
+      <Select label={label} value={value} onChange={onChange}
+        options={[{ value: '', label: 'Not set' }, ...buckets.filter((b) => b.active || b.id === value).map((b) => ({ value: b.id, label: `${b.name} (${b.currency})` }))]} />
     </label>
   );
 }
