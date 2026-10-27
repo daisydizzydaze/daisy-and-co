@@ -293,3 +293,10 @@ input:focus-visible, select:focus-visible, button:focus-visible { outline: 3px s
 @media (min-width: 1200px) { .acct-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @media (min-width: 960px) { .acct-new { max-width: 560px; } }
 .push-right { margin-left: auto; }
+.acct-fields { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 0.8fr) minmax(0, 1.2fr); gap: 6px; }
+.acct-fields select { min-height: 38px; font-size: 13px; padding: 0 8px; }
+.acct .field.inline input { width: 80px; }
+.acct-new .grid3 { grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.6fr) minmax(0, 1.2fr); }
+.account-dates select { min-height: 44px; }
+.loan-summary { display: flex; flex-direction: column; gap: 4px; padding: 8px 10px; border-radius: 12px; background: color-mix(in srgb, var(--yellow) 45%, var(--paper)); border: 1px solid var(--line); }
+.loan-summary .meter { margin: 0 0 2px; max-width: none; }

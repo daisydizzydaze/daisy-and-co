@@ -154,7 +154,7 @@ export function ExpenseScreen({ tags, buckets, onTagsChanged }: Props) {
                           <span className="row-main">
                             <span className="tag">{b.name}</span>
                             <span className="muted small">
-                              {[due ?? (isCard ? null : 'cash'), rows.length === 0 ? 'nothing yet' : isCard ? (open === 0 ? 'all settled' : `${open} open`) : null].filter(Boolean).join(' · ')}
+                              {[due ?? (isCard ? null : b.type === 'Bank' ? 'debit' : 'cash'), rows.length === 0 ? 'nothing yet' : isCard ? (open === 0 ? 'all settled' : `${open} open`) : null].filter(Boolean).join(' · ')}
                             </span>
                           </span>
                           <span className="row-amt">
