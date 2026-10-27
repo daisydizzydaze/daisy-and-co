@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { DateField } from './DateField';
 import { insertBucket, removeGroup, save, saveCurrencies, saveGroup } from '../lib/data';
 import { fetchRatesToHkd } from '../lib/fx';
 import { money, monthName, todayISO } from '../lib/format';
@@ -364,7 +365,7 @@ function SurrenderValue({ b, run }: { b: Bucket; run: Run }) {
       </label>
       <label className="field">
         <span>As of</span>
-        <input type="date" defaultValue={b.surrender_value_on ?? ''} onBlur={(e) => saveIf('surrender_value_on', e.target.value || null)} />
+        <DateField label="Surrender value as of" value={b.surrender_value_on ?? ''} onChange={(v) => saveIf('surrender_value_on', v || null)} />
       </label>
     </div>
   );
@@ -394,7 +395,7 @@ function Shares({ b, run }: { b: Bucket; run: Run }) {
         </label>
         <label className="field">
           <span>As of <em className="muted">(e.g. last round)</em></span>
-          <input type="date" defaultValue={b.price_on ?? ''} onBlur={(e) => saveIf('price_on', e.target.value || null)} />
+          <DateField label="Value as of" value={b.price_on ?? ''} onChange={(v) => saveIf('price_on', v || null)} />
         </label>
       </div>
       {b.shares != null && (

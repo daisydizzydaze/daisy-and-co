@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { DateField } from './DateField';
 import { remove, save } from '../lib/data';
 import { monthName, statementMonth, todayISO } from '../lib/format';
 import { PAYS_AT_ONCE, type Bucket, type Expense, type Tag } from '../lib/types';
@@ -109,7 +110,7 @@ export function ExpenseSheet({ row, tags, buckets, defaultDate, onClose, onSaved
         <div className="grid2">
           <label className="field">
             <span>Date</span>
-            <input type="date" required value={spentOn} onChange={(e) => setSpentOn(e.target.value)} />
+            <DateField required label="Date" value={spentOn} onChange={setSpentOn} />
           </label>
           <label className="field">
             <span>Where <em className="muted">(optional)</em></span>

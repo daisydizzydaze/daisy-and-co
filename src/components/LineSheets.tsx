@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { DateField } from './DateField';
 import { remove, save } from '../lib/data';
 import { addMonths, budgetMonthFor, money, monthName, monthOnly, todayISO } from '../lib/format';
 import { CURRENCIES, currencyLabel, type Allocation, type Bucket, type Income, type Section, type Tag } from '../lib/types';
@@ -90,7 +91,7 @@ export function IncomeSheet({ month, row, tags, buckets, onClose, onSaved, onTag
         <div className="grid2">
           <label className="field">
             <span>Landed on</span>
-            <input type="date" required value={receivedOn} onChange={(e) => onDate(e.target.value)} />
+            <DateField required label="Date" value={receivedOn} onChange={onDate} />
           </label>
           <label className="field">
             <span>Counts for</span>
