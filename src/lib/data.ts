@@ -40,9 +40,16 @@ export async function saveCurrencies(list: string[]) {
   if (res.error) throw new Error(res.error.message);
 }
 
-export async function saveGroup(row: Row, id?: string) {
-  const res = id ? await supabase.from('account_groups').update(row).eq('id', id) : await supabase.from('account_groups').insert(row);
+/** Returns the group's id (the new one when inserting). */
+export async function saveGroup(row: Row, id?: string): Promise<string> {
+  if (id) {
+    const res = await supabase.from('account_groups').update(row).eq('id', id);
+    if (res.error) throw new Error(res.error.message);
+    return id;
+  }
+  const res = await supabase.from('account_groups').insert(row).select('id').single();
   if (res.error) throw new Error(res.error.message);
+  return (res.data as { id: string }).id;
 }
 
 export async function removeGroup(id: string) {
