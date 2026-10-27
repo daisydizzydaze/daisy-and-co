@@ -415,3 +415,12 @@ select {
 .date-month.on { background: var(--pink); border-color: var(--ink); font-weight: 700; }
 .date-foot { display: flex; justify-content: space-between; padding: 2px 4px 0; }
 .acct .date-btn { background-color: var(--paper); }
+.segmented.three { grid-template-columns: repeat(3, 1fr); }
+@media (min-width: 960px) { .segmented.three { max-width: 420px; } }
+.acct-fields > .group-edit { grid-column: 1 / -1; }
+.group-edit { display: flex; flex-direction: column; gap: 8px; padding: 10px; border: 1.5px dashed var(--ink); border-radius: 14px; background: var(--paper); }
+.group-edit-actions { display: flex; justify-content: flex-end; align-items: center; gap: 14px; }
+.add-acct { width: 100%; min-height: 52px; border: 1.5px dashed var(--ink); border-radius: var(--radius); background: transparent; font-weight: 700; font-size: 15px; cursor: pointer; }
+.add-acct:hover { background: var(--paper); }
+@media (min-width: 960px) { .add-acct { max-width: 560px; } }
+.acct-new-head { display: flex; justify-content: space-between; align-items: baseline; }
