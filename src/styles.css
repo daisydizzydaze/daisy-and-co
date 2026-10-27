@@ -177,3 +177,11 @@ input:focus-visible, select:focus-visible, button:focus-visible { outline: 3px s
 .fx-head { display: flex; justify-content: space-between; align-items: center; }
 .fx-list { list-style: none; margin: 4px 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .fx-list li { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+
+/* ---------- display currency ---------- */
+.show-in { display: flex; align-items: center; justify-content: flex-end; gap: 6px; margin-bottom: -4px; }
+.show-in button { min-height: 36px; min-width: 52px; border: 1.5px solid var(--ink); border-radius: 999px; background: var(--paper); font-size: 13px; font-weight: 600; cursor: pointer; }
+.show-in button[aria-pressed='true'] { background: var(--ink); color: var(--bg); }
+.show-in button:disabled { opacity: 0.4; cursor: default; }
+.totals { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+.alt-total { font-family: var(--body); font-weight: 400; }

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { copyPlan, loadMonth, save, saveFx, type MonthData } from '../lib/data';
 import { addMonths, money, monthName, monthOnly, pct, shortMonth } from '../lib/format';
 import { fetchRatesToHkd, rateDate } from '../lib/fx';
+import { DisplayContext, makeDisplay, savedDisplay, saveDisplay, useDisplay, type DisplayCurrency } from '../lib/display';
 import type { Allocation, Bucket, Income, Section, Tag } from '../lib/types';
 import { Bud, type Mood } from './Bud';
 import { AllocationSheet, IncomeSheet } from './LineSheets';
@@ -37,6 +38,7 @@ export function AllocationScreen({ month, setMonth, tags, buckets }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<Editing>(null);
   const [busy, setBusy] = useState(false);
+  const [displayCur, setDisplayCur] = useState<DisplayCurrency>(savedDisplay());
 
   const reload = useCallback(async () => {
     try {
@@ -110,10 +112,18 @@ export function AllocationScreen({ month, setMonth, tags, buckets }: Props) {
     setBusy(false);
   }
 
+  const sgdRate = data?.fx.find((f) => f.currency === 'SGD')?.rate_to_hkd;
+  const d = makeDisplay(displayCur, sgdRate ? Number(sgdRate) : null);
+  const pickDisplay = (c: DisplayCurrency) => {
+    setDisplayCur(c);
+    saveDisplay(c);
+  };
+
   const allocs = (section: Section) => data?.allocations.filter((a) => a.section === section) ?? [];
   const withheld = data?.income.filter((i) => Number(i.tax_withheld) > 0) ?? [];
 
   return (
+    <DisplayContext.Provider value={d}>
     <div className="screen">
       <header className="month-nav">
         <button className="icon-btn" aria-label="Previous month" onClick={() => setMonth(addMonths(month, -1))}>
@@ -131,6 +141,13 @@ export function AllocationScreen({ month, setMonth, tags, buckets }: Props) {
 
       {error && <p className="error card" role="alert">{error}</p>}
 
+      <div className="show-in" role="group" aria-label="Show amounts in">
+        <span className="muted small">Show in</span>
+        {(['SGD', 'HKD'] as DisplayCurrency[]).map((c) => (
+          <button key={c} aria-pressed={d.cur === c} disabled={c === 'SGD' && !sgdRate} onClick={() => pickDisplay(c)}>{c}</button>
+        ))}
+      </div>
+
       {!data ? (
         <p className="muted center">Opening the books…</p>
       ) : (
@@ -139,15 +156,15 @@ export function AllocationScreen({ month, setMonth, tags, buckets }: Props) {
             <div className="hero-text">
               <span className="eyebrow">Saving rate</span>
               <span className="big">{pct(s?.saving_rate)}</span>
-              <span className="muted small">Growth {money(s?.growth)} ÷ net income {money(net)}</span>
+              <span className="muted small">Growth {d.show(s?.growth)} ÷ net income {d.show(net)}</span>
               <span className={`status ${Math.abs(unallocated) < 1 && hasIncome ? 'good' : unallocated < 0 ? 'bad' : ''}`}>
                 {!hasIncome
                   ? 'Add this month’s income to start'
                   : Math.abs(unallocated) < 1
                     ? 'Every dollar has a job'
                     : unallocated > 0
-                      ? `${money(unallocated)} still to assign`
-                      : `Over-assigned by ${money(-unallocated)}`}
+                      ? `${d.show(unallocated)} still to assign`
+                      : `Over-assigned by ${d.show(-unallocated)}`}
               </span>
             </div>
             <Bud mood={mood} size={92} coin={mood === 'cheer'} />
@@ -163,7 +180,7 @@ export function AllocationScreen({ month, setMonth, tags, buckets }: Props) {
                   key={i.id}
                   name={tagById.get(i.tag_id)?.name ?? '–'}
                   sub={[i.source, `landed ${i.received_on.slice(8)} ${shortMonth(i.received_on)}`].filter(Boolean).join(' · ')}
-                  native={i.currency !== 'HKD' ? money(Number(i.gross_amount), i.currency) : undefined}
+                  native={foreign(i.currency) ? money(Number(i.gross_amount), i.currency) : undefined}
                   amount={hkd.get(`income:${i.id}`)?.amount ?? null}
                   onEdit={() => setEditing({ kind: 'income', row: i })}
                 />
@@ -176,7 +193,7 @@ export function AllocationScreen({ month, setMonth, tags, buckets }: Props) {
                   key={`w-${i.id}`}
                   name="Withheld at source"
                   sub={tagById.get(i.tag_id)?.name}
-                  native={i.currency !== 'HKD' ? money(Number(i.tax_withheld), i.currency) : undefined}
+                  native={foreign(i.currency) ? money(Number(i.tax_withheld), i.currency) : undefined}
                   amount={hkd.get(`tax:${i.id}`)?.amount ?? null}
                   onEdit={() => setEditing({ kind: 'income', row: i })}
                 />
@@ -207,7 +224,7 @@ export function AllocationScreen({ month, setMonth, tags, buckets }: Props) {
 
             <div className={`unallocated ${Math.abs(unallocated) < 1 ? 'zero' : unallocated < 0 ? 'neg' : ''}`}>
               <span>Unallocated</span>
-              <span className="num">{money(unallocated)}</span>
+              <span className="num">{d.show(unallocated)}</span>
             </div>
           </section>
 
@@ -230,10 +247,15 @@ export function AllocationScreen({ month, setMonth, tags, buckets }: Props) {
         <AllocationSheet month={month} section={editing.section} row={editing.row} tags={tags} buckets={buckets} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); reload(); }} />
       )}
     </div>
+    </DisplayContext.Provider>
   );
 }
 
+/** Currencies other than the two display ones get their own native line. */
+const foreign = (c: string) => c !== 'HKD' && c !== 'SGD';
+
 function Block(props: { title: string; hint: string; total: number; minus?: boolean; accent?: boolean; onAdd: () => void; addLabel: string; children: React.ReactNode }) {
+  const d = useDisplay();
   return (
     <div className={`block ${props.accent ? 'accent' : ''}`}>
       <div className="block-head">
@@ -241,7 +263,10 @@ function Block(props: { title: string; hint: string; total: number; minus?: bool
           <h2>{props.minus ? <span className="less">less </span> : null}{props.title}</h2>
           <span className="muted small">{props.hint}</span>
         </div>
-        <span className="num strong">{props.minus && props.total > 0 ? `(${money(props.total)})` : money(props.total)}</span>
+        <span className="totals">
+          <span className="num strong">{props.minus && props.total > 0 ? `(${d.show(props.total)})` : d.show(props.total)}</span>
+          <span className="muted small num">{d.alt(props.total)}</span>
+        </span>
       </div>
       <ul className="rows">{props.children}</ul>
       <button className="add" onClick={props.onAdd}>
@@ -253,6 +278,7 @@ function Block(props: { title: string; hint: string; total: number; minus?: bool
 }
 
 function Row({ name, sub, native, amount, onEdit }: { name: string; sub?: string | null; native?: string; amount: number | null; onEdit: () => void }) {
+  const d = useDisplay();
   return (
     <li>
       <button className="row" onClick={onEdit}>
@@ -261,8 +287,8 @@ function Row({ name, sub, native, amount, onEdit }: { name: string; sub?: string
           {sub && <span className="muted small">{sub}</span>}
         </span>
         <span className="row-amt">
-          <span className="num">{money(amount)}</span>
-          {native && <span className="muted small">{native}</span>}
+          <span className="num">{d.show(amount)}</span>
+          <span className="muted small num">{[native, d.alt(amount)].filter(Boolean).join(' · ')}</span>
         </span>
       </button>
     </li>
@@ -272,6 +298,7 @@ function Row({ name, sub, native, amount, onEdit }: { name: string; sub?: string
 function AllocRow({ a, tag, bucket, hkd, showActual, onEdit, onToggle }: {
   a: Allocation; tag?: Tag; bucket?: Bucket; hkd?: { amount: number | null; actual: number | null }; showActual?: boolean; onEdit: () => void; onToggle: () => void;
 }) {
+  const d = useDisplay();
   const planned = hkd?.amount ?? 0;
   const actual = hkd?.actual ?? 0;
   const ratio = planned > 0 ? Math.min(1, actual / planned) : 0;
@@ -286,17 +313,17 @@ function AllocRow({ a, tag, bucket, hkd, showActual, onEdit, onToggle }: {
           <span className="tag">{tag?.name ?? '–'}</span>
           <span className="muted small">{[bucket ? `to ${bucket.name}` : null, a.note].filter(Boolean).join(' · ') || (a.done ? 'moved' : 'planned')}</span>
           {showActual && (
-            <span className="meter" aria-label={`Spent ${money(actual)} of ${money(planned)}`}>
+            <span className="meter" aria-label={`Spent ${d.show(actual)} of ${d.show(planned)}`}>
               <span className={`grow ${over ? 'over' : ''}`} style={{ width: `${(over ? 1 : ratio) * 100}%` }} />
             </span>
           )}
         </span>
         <span className="row-amt">
-          <span className="num">{money(hkd?.amount ?? null)}</span>
+          <span className="num">{d.show(hkd?.amount ?? null)}</span>
           {showActual ? (
-            <span className={`small ${over ? 'bad-text' : 'muted'}`}>{money(actual)} spent</span>
+            <span className={`small ${over ? 'bad-text' : 'muted'}`}>{d.show(actual)} spent</span>
           ) : (
-            a.currency !== 'HKD' && <span className="muted small">{money(Number(a.amount), a.currency)}</span>
+            <span className="muted small num">{[foreign(a.currency) ? money(Number(a.amount), a.currency) : null, d.alt(hkd?.amount ?? null)].filter(Boolean).join(' · ')}</span>
           )}
         </span>
       </button>
@@ -305,10 +332,14 @@ function AllocRow({ a, tag, bucket, hkd, showActual, onEdit, onToggle }: {
 }
 
 function Subtotal({ label, value }: { label: string; value: number }) {
+  const d = useDisplay();
   return (
     <div className="subtotal">
       <span>{label}</span>
-      <span className="num">{money(value)}</span>
+      <span className="totals">
+        <span className="num">{d.show(value)}</span>
+        <span className="muted small num alt-total">{d.alt(value)}</span>
+      </span>
     </div>
   );
 }
