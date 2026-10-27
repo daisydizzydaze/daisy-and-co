@@ -37,7 +37,7 @@ export function IncomeSheet({ month, row, tags, buckets, onClose, onSaved }: Com
   const [source, setSource] = useState(row?.source ?? '');
   const [receivedOn, setReceivedOn] = useState(row?.received_on ?? defaultReceived(month));
   const [budgetMonth, setBudgetMonth] = useState(row?.budget_month ?? month);
-  const [currency, setCurrency] = useState(row?.currency ?? 'SGD');
+  const [currency, setCurrency] = useState(row?.currency ?? lastCurrency('income', 'SGD'));
   const [gross, setGross] = useState(row ? String(row.gross_amount) : '');
   const [withheld, setWithheld] = useState(row && Number(row.tax_withheld) > 0 ? String(row.tax_withheld) : '');
   const [bucketId, setBucketId] = useState(row?.bucket_id ?? '');
@@ -57,6 +57,7 @@ export function IncomeSheet({ month, row, tags, buckets, onClose, onSaved }: Com
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
+    rememberCurrency('income', currency);
     run(() =>
       save('income', {
         tag_id: tagId,
@@ -76,15 +77,13 @@ export function IncomeSheet({ month, row, tags, buckets, onClose, onSaved }: Com
     <Sheet title={row ? 'Edit income' : 'Add income'} onClose={onClose}>
       <form className="stack" onSubmit={submit}>
         <TagPicker label="Income type" tags={incomeTags} value={tagId} onChange={onTag} />
-        <div className="grid2">
-          <label className="field">
-            <span>Gross amount</span>
-            <input inputMode="decimal" required value={gross} onChange={(e) => setGross(e.target.value)} placeholder="0" />
-          </label>
-          <CurrencyField value={currency} onChange={setCurrency} />
-        </div>
+        <CurrencyField value={currency} onChange={setCurrency} />
         <label className="field">
-          <span>Tax withheld before it landed <em className="muted">(optional)</em></span>
+          <span>Gross amount ({currency})</span>
+          <input inputMode="decimal" required value={gross} onChange={(e) => setGross(e.target.value)} placeholder="0" />
+        </label>
+        <label className="field">
+          <span>Tax withheld before it landed, in {currency} <em className="muted">(optional)</em></span>
           <input inputMode="decimal" value={withheld} onChange={(e) => setWithheld(e.target.value)} placeholder="0" />
         </label>
         <div className="grid2">
@@ -130,7 +129,7 @@ export function AllocationSheet({ month, section, row, tags, buckets, onClose, o
   const first = sectionTags[0];
   const [tagId, setTagId] = useState(row?.tag_id ?? first?.id ?? '');
   const [amount, setAmount] = useState(row ? String(row.amount) : '');
-  const [currency, setCurrency] = useState(row?.currency ?? bucketCurrency(buckets, first?.default_bucket_id) ?? 'HKD');
+  const [currency, setCurrency] = useState(row?.currency ?? bucketCurrency(buckets, first?.default_bucket_id) ?? lastCurrency(section, 'HKD'));
   const [toBucket, setToBucket] = useState(row?.to_bucket_id ?? first?.default_bucket_id ?? '');
   const [done, setDone] = useState(row?.done ?? false);
   const [note, setNote] = useState(row?.note ?? '');
@@ -147,6 +146,7 @@ export function AllocationSheet({ month, section, row, tags, buckets, onClose, o
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
+    rememberCurrency(section, currency);
     run(() =>
       save('allocations', {
         budget_month: month,
@@ -170,13 +170,11 @@ export function AllocationSheet({ month, section, row, tags, buckets, onClose, o
         ) : (
           <TagPicker label="Tag" tags={sectionTags} value={tagId} onChange={onTag} />
         )}
-        <div className="grid2">
-          <label className="field">
-            <span>{section === 'opex' ? 'Planned' : 'Amount'}</span>
-            <input inputMode="decimal" required value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0" />
-          </label>
-          <CurrencyField value={currency} onChange={setCurrency} />
-        </div>
+        <CurrencyField value={currency} onChange={setCurrency} />
+        <label className="field">
+          <span>{section === 'opex' ? 'Planned' : 'Amount'} ({currency})</span>
+          <input inputMode="decimal" required value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0" />
+        </label>
         <BucketField label={section === 'opex' ? 'Card or cash it pays' : 'Moves to'} buckets={buckets} value={toBucket} onChange={setToBucket} />
         <label className="check">
           <input type="checkbox" checked={done} onChange={(e) => setDone(e.target.checked)} />
@@ -209,13 +207,33 @@ function TagPicker({ label, tags, value, onChange }: { label: string; tags: Tag[
 
 function CurrencyField({ value, onChange }: { value: string; onChange: (c: string) => void }) {
   return (
-    <label className="field">
-      <span>Currency</span>
-      <select value={value} onChange={(e) => onChange(e.target.value)}>
-        {CURRENCIES.map((c) => <option key={c}>{c}</option>)}
-      </select>
-    </label>
+    <fieldset className="chips">
+      <legend>Currency</legend>
+      {CURRENCIES.map((c) => (
+        <label key={c} className={`chip ${value === c ? 'on' : ''}`}>
+          <input type="radio" name="currency" value={c} checked={value === c} onChange={() => onChange(c)} />
+          {c}
+        </label>
+      ))}
+    </fieldset>
   );
+}
+
+// Remember the last currency per section on this device, so SGD pay stays one tap away.
+function lastCurrency(key: string, fallback: string): string {
+  try {
+    const v = localStorage.getItem(`currency:${key}`);
+    return v && CURRENCIES.includes(v) ? v : fallback;
+  } catch {
+    return fallback;
+  }
+}
+function rememberCurrency(key: string, c: string) {
+  try {
+    localStorage.setItem(`currency:${key}`, c);
+  } catch {
+    /* private mode */
+  }
 }
 
 function BucketField({ label, buckets, value, onChange }: { label: string; buckets: Bucket[]; value: string; onChange: (id: string) => void }) {

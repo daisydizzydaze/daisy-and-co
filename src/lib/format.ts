@@ -16,6 +16,10 @@ export function monthName(key: string): string {
   return `${MONTHS[m - 1]} ${y}`;
 }
 
+export function monthOnly(key: string): string {
+  return MONTHS[Number(key.split('-')[1]) - 1];
+}
+
 export function shortMonth(key: string): string {
   return MONTHS[Number(key.split('-')[1]) - 1].slice(0, 3);
 }

@@ -1,6 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { copyPlan, loadMonth, save, saveFx, type MonthData } from '../lib/data';
-import { addMonths, money, monthName, pct, shortMonth } from '../lib/format';
+import { addMonths, money, monthName, monthOnly, pct, shortMonth } from '../lib/format';
+import { fetchRatesToHkd, rateDate } from '../lib/fx';
+import { DisplayContext, makeDisplay, savedDisplay, saveDisplay, useDisplay, type DisplayCurrency } from '../lib/display';
 import type { Allocation, Bucket, Income, Section, Tag } from '../lib/types';
 import { Bud, type Mood } from './Bud';
 import { AllocationSheet, IncomeSheet } from './LineSheets';
@@ -36,6 +38,7 @@ export function AllocationScreen({ month, setMonth, tags, buckets }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<Editing>(null);
   const [busy, setBusy] = useState(false);
+  const [displayCur, setDisplayCur] = useState<DisplayCurrency>(savedDisplay());
 
   const reload = useCallback(async () => {
     try {
@@ -65,12 +68,32 @@ export function AllocationScreen({ month, setMonth, tags, buckets }: Props) {
   const hasIncome = (data?.income.length ?? 0) > 0;
   const mood: Mood = !hasIncome ? 'think' : Math.abs(unallocated) < 1 ? 'cheer' : unallocated < 0 ? 'worried' : 'happy';
 
-  const missingCurrencies = useMemo(() => {
+  // Foreign currencies used this month. Each gets one rate per month, pulled once and saved.
+  const usedCurrencies = useMemo(() => {
     if (!data) return [];
     const used = new Set<string>([...data.income.map((i) => i.currency), ...data.allocations.map((a) => a.currency)]);
-    const have = new Set(data.fx.map((f) => f.currency));
-    return [...used].filter((c) => c !== 'HKD' && !have.has(c));
+    return [...used].filter((c) => c !== 'HKD').sort();
   }, [data]);
+  const thisMonthRate = (c: string) => data?.fx.find((f) => f.currency === c && f.month === month);
+  const missingThisMonth = usedCurrencies.filter((c) => !thisMonthRate(c));
+  const [fxError, setFxError] = useState<string | null>(null);
+  const tried = useRef(new Set<string>());
+
+  useEffect(() => {
+    const todo = missingThisMonth.filter((c) => !tried.current.has(`${month}:${c}`));
+    if (todo.length === 0) return;
+    todo.forEach((c) => tried.current.add(`${month}:${c}`));
+    (async () => {
+      try {
+        const rates = await fetchRatesToHkd(rateDate(month), todo);
+        for (const [c, r] of Object.entries(rates)) await saveFx(month, c, r);
+        setFxError(null);
+        reload();
+      } catch (e) {
+        setFxError((e as Error).message);
+      }
+    })();
+  }, [missingThisMonth.join(','), month, reload]);
 
   async function toggleDone(a: Allocation) {
     await save('allocations', { done: !a.done, done_on: a.done ? null : new Date().toISOString().slice(0, 10) }, a.id);
@@ -89,18 +112,27 @@ export function AllocationScreen({ month, setMonth, tags, buckets }: Props) {
     setBusy(false);
   }
 
+  const sgdRate = data?.fx.find((f) => f.currency === 'SGD')?.rate_to_hkd;
+  const d = makeDisplay(displayCur, sgdRate ? Number(sgdRate) : null);
+  const pickDisplay = (c: DisplayCurrency) => {
+    setDisplayCur(c);
+    saveDisplay(c);
+  };
+
   const allocs = (section: Section) => data?.allocations.filter((a) => a.section === section) ?? [];
   const withheld = data?.income.filter((i) => Number(i.tax_withheld) > 0) ?? [];
 
   return (
+    <DisplayContext.Provider value={d}>
     <div className="screen">
       <header className="month-nav">
         <button className="icon-btn" aria-label="Previous month" onClick={() => setMonth(addMonths(month, -1))}>
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M15 5l-7 7 7 7" /></svg>
         </button>
         <div className="month-title">
-          <span className="eyebrow">Monthly allocation</span>
+          <span className="eyebrow">Spending month</span>
           <h1>{monthName(month)}</h1>
+          <span className="funded">Funded by {monthOnly(addMonths(month, -1))} pay</span>
         </div>
         <button className="icon-btn" aria-label="Next month" onClick={() => setMonth(addMonths(month, 1))}>
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M9 5l7 7-7 7" /></svg>
@@ -108,6 +140,13 @@ export function AllocationScreen({ month, setMonth, tags, buckets }: Props) {
       </header>
 
       {error && <p className="error card" role="alert">{error}</p>}
+
+      <div className="show-in" role="group" aria-label="Show amounts in">
+        <span className="muted small">Show in</span>
+        {(['SGD', 'HKD'] as DisplayCurrency[]).map((c) => (
+          <button key={c} aria-pressed={d.cur === c} disabled={c === 'SGD' && !sgdRate} onClick={() => pickDisplay(c)}>{c}</button>
+        ))}
+      </div>
 
       {!data ? (
         <p className="muted center">Opening the books…</p>
@@ -117,15 +156,15 @@ export function AllocationScreen({ month, setMonth, tags, buckets }: Props) {
             <div className="hero-text">
               <span className="eyebrow">Saving rate</span>
               <span className="big">{pct(s?.saving_rate)}</span>
-              <span className="muted small">Growth {money(s?.growth)} ÷ net income {money(net)}</span>
+              <span className="muted small">Growth {d.show(s?.growth)} ÷ net income {d.show(net)}</span>
               <span className={`status ${Math.abs(unallocated) < 1 && hasIncome ? 'good' : unallocated < 0 ? 'bad' : ''}`}>
                 {!hasIncome
                   ? 'Add this month’s income to start'
                   : Math.abs(unallocated) < 1
                     ? 'Every dollar has a job'
                     : unallocated > 0
-                      ? `${money(unallocated)} still to assign`
-                      : `Over-assigned by ${money(-unallocated)}`}
+                      ? `${d.show(unallocated)} still to assign`
+                      : `Over-assigned by ${d.show(-unallocated)}`}
               </span>
             </div>
             <Bud mood={mood} size={92} coin={mood === 'cheer'} />
@@ -133,16 +172,15 @@ export function AllocationScreen({ month, setMonth, tags, buckets }: Props) {
 
           {net > 0 && <SplitBar net={net} opex={s!.opex_planned} cash={s!.quick_cash} growth={s!.growth} key={`bar-${month}`} />}
 
-          {missingCurrencies.length > 0 && <FxPrompt month={month} currencies={missingCurrencies} onSaved={reload} />}
 
           <section className="card statement" aria-label="Income statement">
-            <Block title="Gross income" hint="Salary lands ~25th and funds the next month" total={s?.gross_income ?? 0} onAdd={() => setEditing({ kind: 'income' })} addLabel="Add income">
+            <Block title="Gross income" hint={`${monthOnly(addMonths(month, -1))} pay and other income for ${monthOnly(month)}`} total={s?.gross_income ?? 0} onAdd={() => setEditing({ kind: 'income' })} addLabel="Add income">
               {data.income.map((i) => (
                 <Row
                   key={i.id}
                   name={tagById.get(i.tag_id)?.name ?? '–'}
                   sub={[i.source, `landed ${i.received_on.slice(8)} ${shortMonth(i.received_on)}`].filter(Boolean).join(' · ')}
-                  native={i.currency !== 'HKD' ? money(Number(i.gross_amount), i.currency) : undefined}
+                  native={foreign(i.currency) ? money(Number(i.gross_amount), i.currency) : undefined}
                   amount={hkd.get(`income:${i.id}`)?.amount ?? null}
                   onEdit={() => setEditing({ kind: 'income', row: i })}
                 />
@@ -155,7 +193,7 @@ export function AllocationScreen({ month, setMonth, tags, buckets }: Props) {
                   key={`w-${i.id}`}
                   name="Withheld at source"
                   sub={tagById.get(i.tag_id)?.name}
-                  native={i.currency !== 'HKD' ? money(Number(i.tax_withheld), i.currency) : undefined}
+                  native={foreign(i.currency) ? money(Number(i.tax_withheld), i.currency) : undefined}
                   amount={hkd.get(`tax:${i.id}`)?.amount ?? null}
                   onEdit={() => setEditing({ kind: 'income', row: i })}
                 />
@@ -186,9 +224,13 @@ export function AllocationScreen({ month, setMonth, tags, buckets }: Props) {
 
             <div className={`unallocated ${Math.abs(unallocated) < 1 ? 'zero' : unallocated < 0 ? 'neg' : ''}`}>
               <span>Unallocated</span>
-              <span className="num">{money(unallocated)}</span>
+              <span className="num">{d.show(unallocated)}</span>
             </div>
           </section>
+
+          {usedCurrencies.length > 0 && (
+            <RatesCard month={month} currencies={usedCurrencies} rates={data.fx} error={fxError} onSaved={reload} />
+          )}
 
           {data.allocations.length === 0 && (
             <button className="btn" disabled={busy} onClick={copyFromLast}>
@@ -205,10 +247,15 @@ export function AllocationScreen({ month, setMonth, tags, buckets }: Props) {
         <AllocationSheet month={month} section={editing.section} row={editing.row} tags={tags} buckets={buckets} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); reload(); }} />
       )}
     </div>
+    </DisplayContext.Provider>
   );
 }
 
+/** Currencies other than the two display ones get their own native line. */
+const foreign = (c: string) => c !== 'HKD' && c !== 'SGD';
+
 function Block(props: { title: string; hint: string; total: number; minus?: boolean; accent?: boolean; onAdd: () => void; addLabel: string; children: React.ReactNode }) {
+  const d = useDisplay();
   return (
     <div className={`block ${props.accent ? 'accent' : ''}`}>
       <div className="block-head">
@@ -216,7 +263,10 @@ function Block(props: { title: string; hint: string; total: number; minus?: bool
           <h2>{props.minus ? <span className="less">less </span> : null}{props.title}</h2>
           <span className="muted small">{props.hint}</span>
         </div>
-        <span className="num strong">{props.minus && props.total > 0 ? `(${money(props.total)})` : money(props.total)}</span>
+        <span className="totals">
+          <span className="num strong">{props.minus && props.total > 0 ? `(${d.show(props.total)})` : d.show(props.total)}</span>
+          <span className="muted small num">{d.alt(props.total)}</span>
+        </span>
       </div>
       <ul className="rows">{props.children}</ul>
       <button className="add" onClick={props.onAdd}>
@@ -228,6 +278,7 @@ function Block(props: { title: string; hint: string; total: number; minus?: bool
 }
 
 function Row({ name, sub, native, amount, onEdit }: { name: string; sub?: string | null; native?: string; amount: number | null; onEdit: () => void }) {
+  const d = useDisplay();
   return (
     <li>
       <button className="row" onClick={onEdit}>
@@ -236,8 +287,8 @@ function Row({ name, sub, native, amount, onEdit }: { name: string; sub?: string
           {sub && <span className="muted small">{sub}</span>}
         </span>
         <span className="row-amt">
-          <span className="num">{money(amount)}</span>
-          {native && <span className="muted small">{native}</span>}
+          <span className="num">{d.show(amount)}</span>
+          <span className="muted small num">{[native, d.alt(amount)].filter(Boolean).join(' · ')}</span>
         </span>
       </button>
     </li>
@@ -247,6 +298,7 @@ function Row({ name, sub, native, amount, onEdit }: { name: string; sub?: string
 function AllocRow({ a, tag, bucket, hkd, showActual, onEdit, onToggle }: {
   a: Allocation; tag?: Tag; bucket?: Bucket; hkd?: { amount: number | null; actual: number | null }; showActual?: boolean; onEdit: () => void; onToggle: () => void;
 }) {
+  const d = useDisplay();
   const planned = hkd?.amount ?? 0;
   const actual = hkd?.actual ?? 0;
   const ratio = planned > 0 ? Math.min(1, actual / planned) : 0;
@@ -261,17 +313,17 @@ function AllocRow({ a, tag, bucket, hkd, showActual, onEdit, onToggle }: {
           <span className="tag">{tag?.name ?? '–'}</span>
           <span className="muted small">{[bucket ? `to ${bucket.name}` : null, a.note].filter(Boolean).join(' · ') || (a.done ? 'moved' : 'planned')}</span>
           {showActual && (
-            <span className="meter" aria-label={`Spent ${money(actual)} of ${money(planned)}`}>
+            <span className="meter" aria-label={`Spent ${d.show(actual)} of ${d.show(planned)}`}>
               <span className={`grow ${over ? 'over' : ''}`} style={{ width: `${(over ? 1 : ratio) * 100}%` }} />
             </span>
           )}
         </span>
         <span className="row-amt">
-          <span className="num">{money(hkd?.amount ?? null)}</span>
+          <span className="num">{d.show(hkd?.amount ?? null)}</span>
           {showActual ? (
-            <span className={`small ${over ? 'bad-text' : 'muted'}`}>{money(actual)} spent</span>
+            <span className={`small ${over ? 'bad-text' : 'muted'}`}>{d.show(actual)} spent</span>
           ) : (
-            a.currency !== 'HKD' && <span className="muted small">{money(Number(a.amount), a.currency)}</span>
+            <span className="muted small num">{[foreign(a.currency) ? money(Number(a.amount), a.currency) : null, d.alt(hkd?.amount ?? null)].filter(Boolean).join(' · ')}</span>
           )}
         </span>
       </button>
@@ -280,10 +332,14 @@ function AllocRow({ a, tag, bucket, hkd, showActual, onEdit, onToggle }: {
 }
 
 function Subtotal({ label, value }: { label: string; value: number }) {
+  const d = useDisplay();
   return (
     <div className="subtotal">
       <span>{label}</span>
-      <span className="num">{money(value)}</span>
+      <span className="totals">
+        <span className="num">{d.show(value)}</span>
+        <span className="muted small num alt-total">{d.alt(value)}</span>
+      </span>
     </div>
   );
 }
@@ -314,35 +370,69 @@ function SplitBar({ net, opex, cash, growth }: { net: number; opex: number; cash
   );
 }
 
-function FxPrompt({ month, currencies, onSaved }: { month: string; currencies: string[]; onSaved: () => void }) {
-  const [rates, setRates] = useState<Record<string, string>>({});
+/** One rate per foreign currency per month: pulled automatically, editable, re-pullable. */
+function RatesCard({ month, currencies, rates, error, onSaved }: {
+  month: string; currencies: string[]; rates: { month: string; currency: string; rate_to_hkd: number }[]; error: string | null; onSaved: () => void;
+}) {
+  const [editing, setEditing] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  async function submit(e: React.FormEvent) {
+  const rateFor = (c: string) => rates.find((r) => r.currency === c && r.month === month) ?? rates.find((r) => r.currency === c);
+
+  async function saveEdits(e: React.FormEvent) {
     e.preventDefault();
     try {
-      for (const c of currencies) {
-        const r = Number(rates[c]);
-        if (r > 0) await saveFx(month, c, r);
-      }
+      for (const [c, v] of Object.entries(editing)) if (Number(v) > 0) await saveFx(month, c, Number(v));
+      setEditing({});
       onSaved();
     } catch (x) {
       setErr((x as Error).message);
     }
   }
+  async function refresh() {
+    setBusy(true);
+    setErr(null);
+    try {
+      const got = await fetchRatesToHkd(rateDate(month), currencies);
+      for (const [c, r] of Object.entries(got)) await saveFx(month, c, r);
+      onSaved();
+    } catch (x) {
+      setErr((x as Error).message);
+    }
+    setBusy(false);
+  }
+
+  const missing = currencies.some((c) => !rateFor(c));
   return (
-    <form className="card fx" onSubmit={submit}>
-      <strong>Add an exchange rate</strong>
-      <span className="muted small">Needed to show {currencies.join(' and ')} in HKD for {monthName(month)}.</span>
-      <div className="fx-row">
-        {currencies.map((c) => (
-          <label key={c} className="field inline">
-            <span>1 {c} =</span>
-            <input inputMode="decimal" placeholder="HKD" value={rates[c] ?? ''} onChange={(e) => setRates({ ...rates, [c]: e.target.value })} />
-          </label>
-        ))}
-        <button className="btn primary small-btn">Save</button>
+    <form className={`card fx ${missing ? 'warn' : ''}`} onSubmit={saveEdits}>
+      <div className="fx-head">
+        <strong>Exchange rates for {monthOnly(month)}</strong>
+        <button type="button" className="btn ghost small-btn" disabled={busy} onClick={refresh}>{busy ? 'Updating…' : 'Update'}</button>
       </div>
-      {err && <p className="error">{err}</p>}
+      <ul className="fx-list">
+        {currencies.map((c) => {
+          const r = rateFor(c);
+          const stale = r && r.month !== month;
+          return (
+            <li key={c}>
+              <label className="field inline">
+                <span>1 {c} =</span>
+                <input
+                  inputMode="decimal"
+                  placeholder="HKD"
+                  value={editing[c] ?? (r ? String(Number(r.rate_to_hkd)) : '')}
+                  onChange={(e) => setEditing({ ...editing, [c]: e.target.value })}
+                />
+                <span>HKD</span>
+              </label>
+              {stale && <span className="muted small">using {monthOnly(r.month)}’s rate</span>}
+            </li>
+          );
+        })}
+      </ul>
+      {Object.keys(editing).length > 0 && <button className="btn primary small-btn">Save rates</button>}
+      <span className="muted small">Pulled once for the month and saved, so past months never shift. Edit to match your bank’s rate.</span>
+      {(err || error) && <p className="error">{err || error}. Type the rate in instead.</p>}
     </form>
   );
 }
