@@ -1,0 +1,16 @@
+name: Keep Supabase awake
+
+# Free Supabase projects pause after 7 days without use. A small weekly request keeps it running.
+on:
+  schedule:
+    - cron: '0 3 * * 1'
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    if: ${{ vars.SUPABASE_URL != '' }}
+    steps:
+      - run: |
+          curl -fsS "${{ vars.SUPABASE_URL }}/rest/v1/tags?select=id&limit=1" \
+            -H "apikey: ${{ vars.SUPABASE_ANON_KEY }}" -o /dev/null -w "%{http_code}\n"
