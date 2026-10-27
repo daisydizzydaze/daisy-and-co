@@ -391,3 +391,27 @@ select {
 .acct.folded::before { height: 6px; }
 .acct-grid { align-items: start; }
 .acct-title .small { white-space: normal; }
+
+/* Our own date picker, in the app's pastel style. */
+.datefield { position: relative; }
+.date-btn { width: 100%; min-height: 44px; display: flex; align-items: center; justify-content: space-between; gap: 8px; border: 1.5px solid var(--ink); border-radius: 12px; background: var(--paper); padding: 0 12px; font: inherit; font-size: 15px; color: var(--ink); cursor: pointer; text-align: left; }
+.date-btn.empty span { color: var(--muted); }
+.date-btn[aria-expanded="true"] { background: var(--yellow); }
+.date-required { position: absolute; left: 12px; bottom: 0; width: 1px; height: 1px; min-height: 0; padding: 0; border: 0; opacity: 0; pointer-events: none; }
+.date-pop { position: absolute; z-index: 60; top: calc(100% + 6px); left: 0; width: 296px; max-width: calc(100vw - 32px); background: var(--paper); border: 1.5px solid var(--ink); border-radius: 18px; box-shadow: 4px 4px 0 var(--ink); padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+.acct-grid > :nth-child(2n) .date-pop { left: auto; right: 0; }
+.date-head { display: flex; align-items: center; justify-content: space-between; }
+.date-title { border: none; background: var(--pink); border-radius: 999px; padding: 6px 12px; font-family: var(--display); font-weight: 700; font-size: 15px; cursor: pointer; color: var(--ink); }
+.date-steps { display: flex; gap: 6px; }
+.date-steps .icon-btn.small { width: 32px; height: 32px; font-size: 18px; }
+.date-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; text-align: center; }
+.date-dow { font-size: 11px; font-weight: 700; color: var(--muted); padding: 4px 0; }
+.date-day { aspect-ratio: 1; border: 1.5px solid transparent; border-radius: 50%; background: transparent; font: inherit; font-size: 14px; color: var(--ink); cursor: pointer; display: grid; place-items: center; }
+.date-day:hover { background: color-mix(in srgb, var(--pink) 45%, var(--paper)); }
+.date-day.today { border-color: var(--ink); border-style: dashed; }
+.date-day.on { background: var(--pink); border: 1.5px solid var(--ink); font-weight: 700; }
+.date-months { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.date-month { min-height: 40px; border: 1.5px solid var(--line); border-radius: 12px; background: var(--paper); font: inherit; cursor: pointer; color: var(--ink); }
+.date-month.on { background: var(--pink); border-color: var(--ink); font-weight: 700; }
+.date-foot { display: flex; justify-content: space-between; padding: 2px 4px 0; }
+.acct .date-btn { background-color: var(--paper); }
