@@ -68,7 +68,6 @@ export function AllocationScreen({ month, setMonth, tags, buckets, onTagsChanged
   const net = s?.net_income ?? 0;
   const unallocated = s?.unallocated ?? 0;
   const hasIncome = (data?.income.length ?? 0) > 0;
-  const mood: Mood = !hasIncome ? 'think' : Math.abs(unallocated) < 1 ? 'cheer' : unallocated < 0 ? 'worried' : 'happy';
 
   // Foreign currencies used this month. Each gets one rate per month, pulled once and saved.
   const usedCurrencies = useMemo(() => {
@@ -112,6 +111,9 @@ export function AllocationScreen({ month, setMonth, tags, buckets, onTagsChanged
   }
 
   const rates = ratesFrom(data?.fx ?? []);
+  // Money moved in SGD lands a few cents off in HKD, so anything under one display unit counts as fully assigned.
+  const balanced = Math.abs(unallocated) < Math.max(1, rates.SGD ?? 1);
+  const mood: Mood = !hasIncome ? 'think' : balanced ? 'cheer' : unallocated < 0 ? 'worried' : 'happy';
   /** What's been charged to a card last month, in the given currency. */
   const billFor = (bucketId: string | null | undefined, cur: string): number | null => {
     if (!bucketId || !data) return null;
@@ -187,16 +189,16 @@ export function AllocationScreen({ month, setMonth, tags, buckets, onTagsChanged
       ) : (
         <div className="alloc-layout">
           <aside className="side">
-          <section className="card hero" key={`hero-${month}`}>
+          <section className={`card hero ${balanced && hasIncome ? 'win' : ''}`} key={`hero-${month}`}>
             <div className="hero-text">
               <span className="eyebrow">Saving rate</span>
               <span className="big">{pct(s?.saving_rate)}</span>
               <span className="muted small">Growth {d.show(s?.growth)} ÷ net income {d.show(net)}</span>
-              <span className={`status ${Math.abs(unallocated) < 1 && hasIncome ? 'good' : unallocated < 0 ? 'bad' : ''}`}>
+              <span className={`status ${balanced && hasIncome ? 'good' : unallocated < 0 ? 'bad' : ''}`}>
                 {!hasIncome
                   ? 'Add this month’s income to start'
-                  : Math.abs(unallocated) < 1
-                    ? 'Every dollar has a job'
+                  : balanced
+                    ? '🎉 Every dollar has a job'
                     : unallocated > 0
                       ? `${d.show(unallocated)} still to assign`
                       : `Over-assigned by ${d.show(-unallocated)}`}
@@ -288,9 +290,9 @@ export function AllocationScreen({ month, setMonth, tags, buckets, onTagsChanged
               </Block>
             ))}
 
-            <div className={`unallocated ${Math.abs(unallocated) < 1 ? 'zero' : unallocated < 0 ? 'neg' : ''}`}>
+            <div className={`unallocated ${balanced ? 'zero' : unallocated < 0 ? 'neg' : ''}`}>
               <span>Unallocated</span>
-              <span className="num">{d.show(unallocated)}</span>
+              <span className="num">{balanced ? <>{d.show(0)} <span className="tick" aria-label="all assigned">✓</span></> : d.show(unallocated)}</span>
             </div>
           </section>
         </div>
@@ -416,7 +418,7 @@ function SplitBar({ net, opex, cash, growth }: { net: number; opex: number; cash
     { key: 'opex', label: 'Expenses', v: opex },
     { key: 'cash', label: 'Quick Cash', v: cash },
     { key: 'growth', label: 'Growth', v: growth },
-    { key: 'rest', label: 'Unassigned', v: rest },
+    { key: 'rest', label: 'Unassigned', v: rest > net * 0.005 ? rest : 0 },
   ].filter((p) => p.v > 0);
   return (
     <section className="card split" aria-label="Where net income goes">
