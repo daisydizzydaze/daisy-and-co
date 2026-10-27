@@ -5,26 +5,30 @@ export type DisplayCurrency = 'SGD' | 'HKD';
 
 export interface Display {
   cur: DisplayCurrency;
-  /** Main figure: an HKD amount shown in the chosen currency. */
+  /** Totals: an HKD amount shown in the chosen currency. */
   show: (hkd: number | null | undefined) => string;
-  /** Second line: the same amount in the other currency. */
+  /** Second line under a total: the same amount in the other currency. */
   alt: (hkd: number | null | undefined) => string;
+  /** An HKD amount shown in any currency we have a rate for. */
+  inCur: (hkd: number | null | undefined, cur: string) => string;
 }
 
 /** Everything is stored and summed in HKD; this only changes how it is shown. */
-export function makeDisplay(cur: DisplayCurrency, sgdRate: number | null): Display {
-  const effective: DisplayCurrency = cur === 'SGD' && sgdRate ? 'SGD' : 'HKD';
-  const conv = (hkd: number | null | undefined, c: DisplayCurrency) =>
-    hkd === null || hkd === undefined ? null : c === 'HKD' ? hkd : hkd / (sgdRate as number);
+export function makeDisplay(cur: DisplayCurrency, rates: Record<string, number>): Display {
+  const rate = (c: string) => (c === 'HKD' ? 1 : rates[c]);
+  const inCur = (hkd: number | null | undefined, c: string) =>
+    hkd === null || hkd === undefined || !rate(c) ? '' : money(hkd / rate(c), c);
+  const effective: DisplayCurrency = cur === 'SGD' && rate('SGD') ? 'SGD' : 'HKD';
   const other: DisplayCurrency = effective === 'SGD' ? 'HKD' : 'SGD';
   return {
     cur: effective,
-    show: (hkd) => money(conv(hkd, effective), effective),
-    alt: (hkd) => (other === 'SGD' && !sgdRate ? '' : money(conv(hkd, other), other)),
+    show: (hkd) => inCur(hkd, effective) || money(null),
+    alt: (hkd) => inCur(hkd, other),
+    inCur,
   };
 }
 
-export const DisplayContext = createContext<Display>(makeDisplay('HKD', null));
+export const DisplayContext = createContext<Display>(makeDisplay('HKD', {}));
 export const useDisplay = () => useContext(DisplayContext);
 
 const KEY = 'display-currency';
