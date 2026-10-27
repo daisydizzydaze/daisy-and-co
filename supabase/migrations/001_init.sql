@@ -133,15 +133,28 @@ create index on public.expenses (user_id, budget_month, paid_from);
 -- ─────────────────────────────────────────────────────────────
 -- Privacy: every row is visible only to the person who owns it
 -- ─────────────────────────────────────────────────────────────
-do $$
-declare t text;
-begin
-  foreach t in array array['settings','buckets','tags','fx_rates','income','allocations','expenses'] loop
-    execute format('alter table public.%I enable row level security', t);
-    execute format($p$create policy "own rows" on public.%I for all to authenticated
-                     using (user_id = auth.uid()) with check (user_id = auth.uid())$p$, t);
-  end loop;
-end $$;
+alter table public.settings enable row level security;
+alter table public.buckets enable row level security;
+alter table public.tags enable row level security;
+alter table public.fx_rates enable row level security;
+alter table public.income enable row level security;
+alter table public.allocations enable row level security;
+alter table public.expenses enable row level security;
+
+create policy "own rows" on public.settings for all to authenticated
+  using (user_id = auth.uid()) with check (user_id = auth.uid());
+create policy "own rows" on public.buckets for all to authenticated
+  using (user_id = auth.uid()) with check (user_id = auth.uid());
+create policy "own rows" on public.tags for all to authenticated
+  using (user_id = auth.uid()) with check (user_id = auth.uid());
+create policy "own rows" on public.fx_rates for all to authenticated
+  using (user_id = auth.uid()) with check (user_id = auth.uid());
+create policy "own rows" on public.income for all to authenticated
+  using (user_id = auth.uid()) with check (user_id = auth.uid());
+create policy "own rows" on public.allocations for all to authenticated
+  using (user_id = auth.uid()) with check (user_id = auth.uid());
+create policy "own rows" on public.expenses for all to authenticated
+  using (user_id = auth.uid()) with check (user_id = auth.uid());
 
 -- ─────────────────────────────────────────────────────────────
 -- Maths: convert to HKD and build the monthly income statement
