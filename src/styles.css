@@ -215,3 +215,6 @@ input:focus-visible, select:focus-visible, button:focus-visible { outline: 3px s
   .tabbar { left: 16px; top: 16px; bottom: 16px; transform: none; width: 80px; max-width: none; grid-template-columns: 1fr; grid-auto-rows: 72px; align-content: start; gap: 6px; padding: 8px; }
   .tabbar button { min-height: 64px; font-size: 12px; }
 }
+.link.rename { flex-basis: 100%; margin-top: 2px; }
+.rename-row { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.rename-row input { flex: 1 1 200px; width: auto; }

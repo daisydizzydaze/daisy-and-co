@@ -10,6 +10,7 @@ interface Common {
   buckets: Bucket[];
   onClose: () => void;
   onSaved: () => void;
+  onTagsChanged: () => void;
 }
 
 function useSubmit(onSaved: () => void) {
@@ -31,7 +32,7 @@ function useSubmit(onSaved: () => void) {
 
 const num = (s: string) => Number(s.replace(/,/g, ''));
 
-export function IncomeSheet({ month, row, tags, buckets, onClose, onSaved }: Common & { row?: Income }) {
+export function IncomeSheet({ month, row, tags, buckets, onClose, onSaved, onTagsChanged }: Common & { row?: Income }) {
   const incomeTags = tags.filter((t) => t.kind === 'income' && (!t.archived || t.id === row?.tag_id));
   const [tagId, setTagId] = useState(row?.tag_id ?? incomeTags[0]?.id ?? '');
   const [source, setSource] = useState(row?.source ?? '');
@@ -76,7 +77,7 @@ export function IncomeSheet({ month, row, tags, buckets, onClose, onSaved }: Com
   return (
     <Sheet title={row ? 'Edit income' : 'Add income'} onClose={onClose}>
       <form className="stack" onSubmit={submit}>
-        <TagPicker label="Income type" tags={incomeTags} value={tagId} onChange={onTag} />
+        <TagPicker label="Income type" tags={incomeTags} value={tagId} onChange={onTag} onRenamed={onTagsChanged} />
         <CurrencyField value={currency} onChange={setCurrency} />
         <label className="field">
           <span>Gross amount ({currency})</span>
@@ -124,7 +125,7 @@ const SECTION_LABEL: Record<Section, string> = {
   growth: 'Growth',
 };
 
-export function AllocationSheet({ month, section, row, tags, buckets, onClose, onSaved }: Common & { section: Section; row?: Allocation }) {
+export function AllocationSheet({ month, section, row, tags, buckets, onClose, onSaved, onTagsChanged }: Common & { section: Section; row?: Allocation }) {
   const sectionTags = tags.filter((t) => t.kind === section && (!t.archived || t.id === row?.tag_id));
   const first = sectionTags[0];
   const [tagId, setTagId] = useState(row?.tag_id ?? first?.id ?? '');
@@ -168,7 +169,7 @@ export function AllocationSheet({ month, section, row, tags, buckets, onClose, o
         {sectionTags.length === 0 ? (
           <p className="muted">No {SECTION_LABEL[section]} tags yet. Add one under Tags.</p>
         ) : (
-          <TagPicker label="Tag" tags={sectionTags} value={tagId} onChange={onTag} />
+          <TagPicker label="Line" tags={sectionTags} value={tagId} onChange={onTag} onRenamed={onTagsChanged} />
         )}
         <CurrencyField value={currency} onChange={setCurrency} />
         <label className="field">
@@ -191,7 +192,23 @@ export function AllocationSheet({ month, section, row, tags, buckets, onClose, o
   );
 }
 
-function TagPicker({ label, tags, value, onChange }: { label: string; tags: Tag[]; value: string; onChange: (id: string) => void }) {
+function TagPicker({ label, tags, value, onChange, onRenamed }: { label: string; tags: Tag[]; value: string; onChange: (id: string) => void; onRenamed: () => void }) {
+  const current = tags.find((t) => t.id === value);
+  const [renaming, setRenaming] = useState(false);
+  const [name, setName] = useState('');
+  const [err, setErr] = useState<string | null>(null);
+
+  async function rename() {
+    if (!current || !name.trim() || name.trim() === current.name) return setRenaming(false);
+    try {
+      await save('tags', { name: name.trim() }, current.id);
+      setRenaming(false);
+      onRenamed();
+    } catch (e) {
+      setErr((e as Error).message);
+    }
+  }
+
   return (
     <fieldset className="chips">
       <legend>{label}</legend>
@@ -201,6 +218,21 @@ function TagPicker({ label, tags, value, onChange }: { label: string; tags: Tag[
           {t.name}
         </label>
       ))}
+      {current && !renaming && (
+        <button type="button" className="link rename" onClick={() => { setName(current.name); setRenaming(true); }}>
+          Rename “{current.name}”
+        </button>
+      )}
+      {renaming && (
+        <div className="rename-row">
+          <input aria-label="New name" autoFocus value={name} onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); rename(); } }} />
+          <button type="button" className="btn primary small-btn" onClick={rename}>Save name</button>
+          <button type="button" className="btn ghost small-btn" onClick={() => setRenaming(false)}>Cancel</button>
+          <span className="muted small">Renames it in every month.</span>
+        </div>
+      )}
+      {err && <p className="error">{err}</p>}
     </fieldset>
   );
 }

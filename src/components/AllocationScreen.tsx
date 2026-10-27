@@ -31,9 +31,10 @@ interface Props {
   setMonth: (m: string) => void;
   tags: Tag[];
   buckets: Bucket[];
+  onTagsChanged: () => void;
 }
 
-export function AllocationScreen({ month, setMonth, tags, buckets }: Props) {
+export function AllocationScreen({ month, setMonth, tags, buckets, onTagsChanged }: Props) {
   const [data, setData] = useState<MonthData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<Editing>(null);
@@ -177,7 +178,8 @@ export function AllocationScreen({ month, setMonth, tags, buckets }: Props) {
 
           {net > 0 && <SplitBar net={net} opex={s!.opex_planned} cash={s!.quick_cash} growth={s!.growth} key={`bar-${month}`} />}
 
-          {usedCurrencies.length > 0 && (
+          {/* Rates are pulled and saved quietly; this only appears if a pull failed. */}
+          {usedCurrencies.some((c) => !rates[c]) && (
             <div className="later">
               <RatesCard month={month} currencies={usedCurrencies} rates={data.fx} error={fxError} onSaved={reload} />
             </div>
@@ -250,10 +252,10 @@ export function AllocationScreen({ month, setMonth, tags, buckets }: Props) {
       )}
 
       {editing?.kind === 'income' && (
-        <IncomeSheet month={month} row={editing.row} tags={tags} buckets={buckets} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); reload(); }} />
+        <IncomeSheet month={month} row={editing.row} tags={tags} buckets={buckets} onTagsChanged={onTagsChanged} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); reload(); }} />
       )}
       {editing?.kind === 'alloc' && (
-        <AllocationSheet month={month} section={editing.section} row={editing.row} tags={tags} buckets={buckets} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); reload(); }} />
+        <AllocationSheet month={month} section={editing.section} row={editing.row} tags={tags} buckets={buckets} onTagsChanged={onTagsChanged} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); reload(); }} />
       )}
     </div>
     </DisplayContext.Provider>
