@@ -1,26 +1,31 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { loadExpenses, settleStatement, tickBill } from '../lib/data';
+import { loadExpenses, settleStatement, tickBill, type ExpenseData } from '../lib/data';
 import { addMonths, dayIn, money, monthName, monthOnly, shortMonth, thisMonth, todayISO } from '../lib/format';
-import { inCardCurrency, ratesFrom, toHkd } from '../lib/fx';
+import { inCardCurrency, ratesFrom } from '../lib/fx';
+import { makeHkdOf, rangeLabel, shareIn, spread } from '../lib/spend';
 import { useMonthFx } from '../lib/useFx';
 import { DisplayContext, makeDisplay, savedDisplay, saveDisplay, useDisplay, type DisplayCurrency } from '../lib/display';
-import type { Bucket, Expense, FxRate, Tag } from '../lib/types';
+import type { Bucket, Expense, NeedWant, Plan, Tag } from '../lib/types';
 import { Bud, type Mood } from './Bud';
 import { ExpenseSheet, payingAccounts } from './ExpenseSheet';
+import { PlanSheet, planTotals } from './PlanSheet';
 
 type Filter = 'all' | 'charged' | 'settled';
 
 interface Props {
   tags: Tag[];
   buckets: Bucket[];
+  plans: Plan[];
   onTagsChanged: () => void;
 }
 
-export function ExpenseScreen({ tags, buckets, onTagsChanged }: Props) {
+export function ExpenseScreen({ tags, buckets, plans, onTagsChanged }: Props) {
   const [month, setMonth] = useState(thisMonth());
-  const [data, setData] = useState<{ expenses: Expense[]; fx: FxRate[] } | null>(null);
+  const [data, setData] = useState<ExpenseData | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [editing, setEditing] = useState<{ row?: Expense } | null>(null);
+  const [editing, setEditing] = useState<{ row?: Expense; plan?: string } | null>(null);
+  const [planOpen, setPlanOpen] = useState<{ plan?: Plan } | null>(null);
+  const [nw, setNw] = useState<NeedWant | ''>('');
   const [filter, setFilter] = useState<Filter>('all');
   const [account, setAccount] = useState<string>('');
   const [displayCur, setDisplayCur] = useState<DisplayCurrency>(savedDisplay());
@@ -41,24 +46,34 @@ export function ExpenseScreen({ tags, buckets, onTagsChanged }: Props) {
 
   const tagById = useMemo(() => new Map(tags.map((t) => [t.id, t])), [tags]);
   const bucketById = useMemo(() => new Map(buckets.map((b) => [b.id, b])), [buckets]);
-  const rates = ratesFrom(data?.fx ?? []);
+  const rates = { ...ratesFrom(data?.fx ?? []), ...ratesFrom((data?.fx ?? []).filter((f) => f.month <= month)) };
   const d = makeDisplay(displayCur, rates);
 
   // Rates for this month's currencies, pulled once and saved.
-  const used = useMemo(() => {
+  const usedCurrencies = useMemo(() => {
     const s = new Set<string>(['SGD', ...(data?.expenses.map((e) => e.currency) ?? []), ...buckets.map((b) => b.currency)]);
     return [...s].filter((c) => c !== 'HKD');
   }, [data, buckets]);
-  const missing = data ? used.filter((c) => !data.fx.some((f) => f.currency === c && f.month === month)) : [];
+  const missing = data ? usedCurrencies.filter((c) => !data.fx.some((f) => f.currency === c && f.month === month)) : [];
   const fxError = useMonthFx(month, missing, reload);
 
-  const hkdOf = (e: Expense) => toHkd(Number(e.charged_amount ?? e.amount), e.charged_amount != null ? e.charged_currency ?? e.currency : e.currency, rates);
+  // Each expense in HKD at the rate of the month it was paid.
+  const hkdOf = useMemo(() => makeHkdOf(data?.fx ?? []), [data]);
 
-  // Charges made this month (the list) vs. statements closing this month (the cards).
+  // Paid this month (the list and the cards) vs. used this month (spending: the total, Need/Want and categories).
   const spent = (data?.expenses ?? []).filter((e) => e.budget_month === month);
   const counted = spent.filter((e) => !e.reimbursable);
-  const total = counted.reduce((s, e) => s + (hkdOf(e) ?? 0), 0);
+  const paidTotal = counted.reduce((s, e) => s + (hkdOf(e) ?? 0), 0);
   const toSettle = spent.filter((e) => !e.settled_on).length;
+  const used = (data?.expenses ?? [])
+    .filter((e) => !e.reimbursable)
+    .map((e) => ({ e, v: (hkdOf(e) ?? 0) * shareIn(e, month) }))
+    .filter((x) => x.v > 0);
+  const total = used.reduce((s, x) => s + x.v, 0);
+  const needs = used.filter((x) => (x.e.need_want ?? 'need') === 'need').reduce((s, x) => s + x.v, 0);
+  const wants = total - needs;
+  const forLater = counted.filter(spread).reduce((s, e) => s + (hkdOf(e) ?? 0) * (1 - shareIn(e, month)), 0);
+  const fromEarlier = used.filter((x) => x.e.budget_month !== month);
 
   const accounts = payingAccounts(buckets, tags);
   const statements = accounts
@@ -69,15 +84,21 @@ export function ExpenseScreen({ tags, buckets, onTagsChanged }: Props) {
     })
     .filter((s) => s.rows.length > 0 || s.b.type === 'Card');
 
-  const byCategory = useMemo(() => {
+  // Sub-categories roll up into their parent (Flights and Accommodation into Travel).
+  const topOf = (id: string | null) => { const t = tagById.get(id ?? ''); return t?.parent_id && tagById.has(t.parent_id) ? t.parent_id : id ?? ''; };
+  const byCategory = (() => {
     const m = new Map<string, number>();
-    counted.forEach((e) => m.set(e.tag_id ?? '', (m.get(e.tag_id ?? '') ?? 0) + (hkdOf(e) ?? 0)));
+    used.filter((x) => !nw || (x.e.need_want ?? 'need') === nw).forEach(({ e, v }) => m.set(topOf(e.tag_id), (m.get(topOf(e.tag_id)) ?? 0) + v));
     return [...m.entries()].sort((a, b) => b[1] - a[1]);
-  }, [data, rates.SGD]);
+  })();
 
   const shown = spent
     .filter((e) => (filter === 'charged' ? !e.settled_on : filter === 'settled' ? !!e.settled_on : true))
-    .filter((e) => !account || e.paid_from === account);
+    .filter((e) => !account || e.paid_from === account)
+    .filter((e) => !nw || (e.need_want ?? 'need') === nw);
+  const planById = new Map(plans.map((p) => [p.id, p]));
+  const totals = planTotals(data?.planned ?? [], hkdOf);
+  const livePlans = plans.filter((p) => !p.done);
   const days = groupByDay(shown);
 
   async function settle(b: Bucket, settled: boolean) {
@@ -134,11 +155,30 @@ export function ExpenseScreen({ tags, buckets, onTagsChanged }: Props) {
                   <span className="eyebrow">Spent in {monthOnly(month)}</span>
                   <span className="big num">{d.show(total)}</span>
                   <span className="muted small">{[d.alt(total), `${counted.length} ${counted.length === 1 ? 'charge' : 'charges'}`].filter(Boolean).join(' · ')}</span>
+                  {Math.round(forLater) > 0 && (
+                    <span className="muted small">Paid {d.show(paidTotal)}, of which {d.show(forLater)} is for later</span>
+                  )}
                   <span className={`status ${spent.length > 0 && toSettle === 0 ? 'good' : ''}`}>
                     {spent.length === 0 ? 'Nothing logged yet' : toSettle === 0 ? 'All settled' : `${toSettle} still on the card`}
                   </span>
                 </div>
                 <Bud mood={mood} size={64} coin={mood === 'cheer'} />
+                {total > 0 && (
+                  <div className="nw-split">
+                    <div className="split-bar" aria-hidden="true">
+                      <span className="seg need" style={{ width: `${(needs / total) * 100}%` }} />
+                      <span className="seg want" style={{ width: `${(wants / total) * 100}%` }} />
+                    </div>
+                    <div className="nw-legend" role="group" aria-label="Show needs or wants">
+                      {(['need', 'want'] as NeedWant[]).map((k) => (
+                        <button key={k} aria-pressed={nw === k} onClick={() => setNw(nw === k ? '' : k)}>
+                          <span className="nw-label"><i className={`dot ${k}`} aria-hidden="true" />{k === 'need' ? 'Needs' : 'Wants'} <span className="muted">{Math.round(((k === 'need' ? needs : wants) / total) * 100)}%</span></span>
+                          <strong className="num">{d.show(k === 'need' ? needs : wants)}</strong>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </section>
 
               <section className="card stack statements" aria-label="Statements">
@@ -175,6 +215,35 @@ export function ExpenseScreen({ tags, buckets, onTagsChanged }: Props) {
                 <span className="muted small wide-only">Settling a card ticks its bill on {monthOnly(addMonths(month, 1))}’s Monthly Allocation.</span>
               </section>
 
+              <section className="card stack plans" aria-label="Plans">
+                <div className="block-head">
+                  <h2>Plans</h2>
+                  <button className="link" onClick={() => setPlanOpen({})}>+ New plan</button>
+                </div>
+                {livePlans.length === 0 && <p className="muted small">Trips and big buys you pay for bit by bit, like TMB 2027. Their costs count as spending on the plan’s dates.</p>}
+                <ul className="rows">
+                  {livePlans.map((p) => {
+                    const t = totals.get(p.id);
+                    const budgetHkd = p.budget != null ? (p.budget_currency && p.budget_currency !== 'HKD' ? (rates[p.budget_currency] ? p.budget * rates[p.budget_currency] : null) : p.budget) : null;
+                    return (
+                      <li key={p.id}>
+                        <button className="row" onClick={() => setPlanOpen({ plan: p })}>
+                          <span className="row-main">
+                            <span className="tag">{p.name}</span>
+                            <span className="muted small">{[p.starts_on ? rangeLabel(p.starts_on, p.ends_on ?? p.starts_on) : 'no dates yet', `${t?.count ?? 0} ${t?.count === 1 ? 'cost' : 'costs'}`].join(' · ')}</span>
+                            {budgetHkd ? <span className="meter"><span className={(t?.hkd ?? 0) > budgetHkd ? 'over' : 'grow'} style={{ width: `${Math.min(100, ((t?.hkd ?? 0) / budgetHkd) * 100)}%` }} /></span> : null}
+                          </span>
+                          <span className="row-amt">
+                            <span className="num">{d.show(t?.hkd ?? 0)}</span>
+                            {budgetHkd ? <span className="muted small num">of {d.show(budgetHkd)}</span> : null}
+                          </span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </section>
+
               {byCategory.length > 0 && total > 0 && (
                 <details className="card later cats" open={wide}>
                   <summary>
@@ -206,6 +275,9 @@ export function ExpenseScreen({ tags, buckets, onTagsChanged }: Props) {
                   {account && (
                     <button aria-pressed onClick={() => setAccount('')}>{bucketById.get(account)?.name} ✕</button>
                   )}
+                  {nw && (
+                    <button aria-pressed onClick={() => setNw('')}>{nw === 'need' ? 'Needs' : 'Wants'} ✕</button>
+                  )}
                 </div>
                 <button className="btn primary small-btn fab" onClick={() => setEditing({})} aria-label="Log expense">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
@@ -221,11 +293,30 @@ export function ExpenseScreen({ tags, buckets, onTagsChanged }: Props) {
                   <h3 className="day-head">{Number(day.slice(8))} {shortMonth(day)}</h3>
                   <ul className="rows">
                     {rows.map((e) => (
-                      <ExpenseRow key={e.id} e={e} tag={tagById.get(e.tag_id ?? '')} account={bucketById.get(e.paid_from)} hkd={hkdOf(e)} month={month} onEdit={() => setEditing({ row: e })} />
+                      <ExpenseRow key={e.id} e={e} tag={tagById.get(e.tag_id ?? '')} account={bucketById.get(e.paid_from)} plan={planById.get(e.plan_id ?? '')} hkd={hkdOf(e)} month={month} onEdit={() => setEditing({ row: e })} />
                     ))}
                   </ul>
                 </div>
               ))}
+
+              {fromEarlier.filter((x) => !nw || (x.e.need_want ?? 'need') === nw).length > 0 && (
+                <div className="day earlier">
+                  <h3 className="day-head">Paid earlier, used in {monthOnly(month)}</h3>
+                  <ul className="rows">
+                    {fromEarlier.filter((x) => !nw || (x.e.need_want ?? 'need') === nw).map(({ e, v }) => (
+                      <li key={e.id}>
+                        <button className="row xrow" onClick={() => setEditing({ row: e })}>
+                          <span className="row-main">
+                            <span className="tag">{e.vendor || tagById.get(e.tag_id ?? '')?.name || 'Uncategorised'}</span>
+                            <span className="muted small">{[planById.get(e.plan_id ?? '')?.name, `paid ${Number(e.spent_on.slice(8))} ${shortMonth(e.spent_on)}`, `${Math.round(shareIn(e, month) * 100)}% this month`].filter(Boolean).join(' · ')}</span>
+                          </span>
+                          <span className="row-amt"><span className="num">{d.show(v)}</span></span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </section>
           </div>
         )}
@@ -235,10 +326,24 @@ export function ExpenseScreen({ tags, buckets, onTagsChanged }: Props) {
             row={editing.row}
             tags={tags}
             buckets={buckets}
+            plans={plans}
+            defaultPlan={editing.plan}
             defaultDate={month === thisMonth() ? todayISO() : month}
             onTagsChanged={onTagsChanged}
             onClose={() => setEditing(null)}
             onSaved={() => { setEditing(null); reload(); }}
+          />
+        )}
+        {planOpen && (
+          <PlanSheet
+            plan={planOpen.plan}
+            expenses={(data?.planned ?? []).filter((e) => e.plan_id === planOpen.plan?.id)}
+            tags={tags}
+            hkdOf={hkdOf}
+            onClose={() => setPlanOpen(null)}
+            onSaved={() => { setPlanOpen(null); onTagsChanged(); reload(); }}
+            onLog={() => { const id = planOpen.plan?.id; setPlanOpen(null); setEditing({ plan: id }); }}
+            onEdit={(e) => { setPlanOpen(null); setEditing({ row: e }); }}
           />
         )}
       </div>
@@ -246,11 +351,12 @@ export function ExpenseScreen({ tags, buckets, onTagsChanged }: Props) {
   );
 }
 
-function ExpenseRow({ e, tag, account, hkd, month, onEdit }: { e: Expense; tag?: Tag; account?: Bucket; hkd: number | null; month: string; onEdit: () => void }) {
+function ExpenseRow({ e, tag, account, plan, hkd, month, onEdit }: { e: Expense; tag?: Tag; account?: Bucket; plan?: Plan; hkd: number | null; month: string; onEdit: () => void }) {
   const d = useDisplay();
   const cat = tag?.name ?? 'Uncategorised';
   const nextStatement = e.statement_month && e.statement_month !== month;
-  const sub = [e.vendor ? cat : null, account?.name, nextStatement ? `${shortMonth(e.statement_month!)} bill` : null, e.reimbursable ? 'paid back' : null].filter(Boolean).join(' · ');
+  const later = spread(e) && shareIn(e, month) < 1 ? `for ${rangeLabel(e.use_from!, e.use_to!)}` : null;
+  const sub = [e.vendor ? cat : null, plan?.name, account?.name, nextStatement ? `${shortMonth(e.statement_month!)} bill` : null, later, e.reimbursable ? 'paid back' : null].filter(Boolean).join(' · ');
   const amt = Number(e.amount);
   const status = e.settled_on ? 'settled' : 'charged';
   return (

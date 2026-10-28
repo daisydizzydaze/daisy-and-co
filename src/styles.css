@@ -472,3 +472,33 @@ button.block-head:focus-visible { outline: 3px solid var(--pink); outline-offset
 .block.open .block-chev { transform: none; }
 .block.folded { padding-top: 14px; padding-bottom: 14px; }
 .block.open .rows { margin-top: 8px; }
+
+/* Needs vs Wants, plans, use dates */
+.seg.need { background: var(--mint); }
+.seg.want { background: var(--pink); }
+.dot.need { background: var(--mint); }
+.dot.want { background: var(--pink); }
+.nw-split { flex-basis: 100%; display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
+.hero.compact { flex-wrap: wrap; }
+.nw-legend { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.nw-legend button { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-height: 44px; padding: 6px 12px; border: 1.5px solid var(--ink); border-radius: 14px; background: var(--paper); font-size: 13px; text-align: left; cursor: pointer; }
+.nw-legend strong { font-size: 15px; }
+.nw-label { display: inline-flex; align-items: center; gap: 6px; }
+.nw-legend button[aria-pressed='true'] { background: var(--yellow); }
+.nw-legend .dot { margin: 0; }
+.segmented.nw button[aria-selected='true']:first-child { background: var(--mint); color: var(--ink); }
+.segmented.nw button[aria-selected='true']:last-child { background: var(--pink); color: var(--ink); }
+.chip.dashed { border-style: dashed; }
+.chips.subs { padding-left: 12px; border-left: 3px solid var(--pink); }
+.inset { padding-left: 12px; border-left: 3px solid var(--line); }
+.plans .block-head h2 { font-size: 17px; }
+.plans .meter { max-width: none; }
+.meter > span.grow { background: var(--mint); }
+.day.earlier .day-head { color: var(--muted); }
+.plan-costs { padding-bottom: 14px; margin-bottom: 14px; border-bottom: 1.5px dashed var(--line); }
+.plan-costs .big { font-size: 28px; }
+.tag-list li.sub { padding-left: 18px; }
+.nw-toggle { display: inline-flex; border: 1.5px solid var(--ink); border-radius: 999px; overflow: hidden; flex: none; }
+.nw-toggle button { min-height: 32px; padding: 0 10px; border: none; background: var(--paper); font-size: 13px; font-weight: 600; cursor: pointer; }
+.nw-toggle button[aria-checked='true']:first-child { background: var(--mint); }
+.nw-toggle button[aria-checked='true']:last-child { background: var(--pink); }

@@ -3,7 +3,7 @@ import type { Session } from '@supabase/supabase-js';
 import { configured, supabase } from './lib/supabase';
 import { loadSetup } from './lib/data';
 import { defaultBudgetMonth } from './lib/format';
-import type { AccountGroup, Bucket, Tag } from './lib/types';
+import type { AccountGroup, Bucket, Plan, Tag } from './lib/types';
 import { SignIn } from './components/SignIn';
 import { AllocationScreen } from './components/AllocationScreen';
 import { SetupScreen } from './components/SetupScreen';
@@ -18,6 +18,7 @@ export function App() {
   const [tags, setTags] = useState<Tag[]>([]);
   const [buckets, setBuckets] = useState<Bucket[]>([]);
   const [groups, setGroups] = useState<AccountGroup[]>([]);
+  const [plans, setPlans] = useState<Plan[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -32,6 +33,7 @@ export function App() {
       setTags(s.tags);
       setBuckets(s.buckets);
       setGroups(s.groups);
+      setPlans(s.plans);
     } catch (e) {
       setError((e as Error).message);
     }
@@ -59,7 +61,7 @@ export function App() {
         {view === 'allocation' ? (
           <AllocationScreen month={month} setMonth={setMonth} tags={tags} buckets={buckets} onTagsChanged={reloadSetup} />
         ) : view === 'expenses' ? (
-          <ExpenseScreen tags={tags} buckets={buckets} onTagsChanged={reloadSetup} />
+          <ExpenseScreen tags={tags} buckets={buckets} plans={plans} onTagsChanged={reloadSetup} />
         ) : (
           <SetupScreen tags={tags} buckets={buckets} groups={groups} onChange={reloadSetup} />
         )}

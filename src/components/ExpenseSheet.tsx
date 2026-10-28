@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { commas, fmtNum } from '../lib/numInput';
 import { DateField } from './DateField';
-import { remove, save } from '../lib/data';
+import { insertPlan, remove, save } from '../lib/data';
 import { monthName, statementMonth, todayISO } from '../lib/format';
-import { PAYS_AT_ONCE, type Bucket, type Expense, type Tag } from '../lib/types';
+import { PAYS_AT_ONCE, type Bucket, type Expense, type NeedWant, type Plan, type Tag } from '../lib/types';
+import { rangeLabel } from '../lib/spend';
 import { Actions, CurrencyField, lastCurrency, num, rememberCurrency, TagPicker, useSubmit } from './LineSheets';
 import { Sheet } from './Sheet';
 
@@ -28,10 +29,12 @@ function rememberPaidWith(id: string) {
   }
 }
 
-export function ExpenseSheet({ row, tags, buckets, defaultDate, onClose, onSaved, onTagsChanged }: {
-  row?: Expense; tags: Tag[]; buckets: Bucket[]; defaultDate?: string; onClose: () => void; onSaved: () => void; onTagsChanged: () => void;
+export function ExpenseSheet({ row, tags, buckets, plans, defaultDate, defaultPlan, onClose, onSaved, onTagsChanged }: {
+  row?: Expense; tags: Tag[]; buckets: Bucket[]; plans: Plan[]; defaultDate?: string; defaultPlan?: string; onClose: () => void; onSaved: () => void; onTagsChanged: () => void;
 }) {
-  const cats = tags.filter((t) => t.kind === 'expense' && (!t.archived || t.id === row?.tag_id));
+  const allCats = tags.filter((t) => t.kind === 'expense' && (!t.archived || t.id === row?.tag_id));
+  const cats = allCats.filter((t) => !t.parent_id || !allCats.some((p) => p.id === t.parent_id));
+  const subsOf = (id: string) => allCats.filter((t) => t.parent_id === id);
   const accounts = payingAccounts(buckets, tags, row?.paid_from);
   const remembered = accounts.find((b) => b.id === lastPaidWith())?.id;
   const [paidFrom, setPaidFrom] = useState(row?.paid_from ?? remembered ?? accounts[0]?.id ?? '');
@@ -40,7 +43,34 @@ export function ExpenseSheet({ row, tags, buckets, defaultDate, onClose, onSaved
   const [currency, setCurrencyRaw] = useState(row?.currency ?? account?.currency ?? lastCurrency('expense', 'HKD'));
   const [currencyTouched, setCurrencyTouched] = useState(!!row);
   const setCurrency = (c: string) => { setCurrencyRaw(c); setCurrencyTouched(true); };
-  const [tagId, setTagId] = useState(row?.tag_id ?? cats[0]?.id ?? '');
+  const startTag = allCats.find((t) => t.id === row?.tag_id);
+  const [catId, setCatId] = useState(startTag?.parent_id && cats.some((c) => c.id === startTag.parent_id) ? startTag.parent_id : startTag?.id ?? cats[0]?.id ?? '');
+  const [subId, setSubId] = useState(startTag && startTag.id !== catId ? startTag.id : '');
+  const tagId = subId || catId;
+  const subs = subsOf(catId);
+
+  // Plans: pick one, or make one right here.
+  const openPlans = plans.filter((p) => !p.done || p.id === row?.plan_id);
+  const [planId, setPlanId] = useState(row?.plan_id ?? defaultPlan ?? '');
+  const plan = plans.find((p) => p.id === planId);
+  const [newPlan, setNewPlan] = useState<{ name: string; from: string; to: string } | null>(null);
+
+  // Need or Want follows the plan, then the category, until you pick one yourself.
+  const tagDefault = (id: string): NeedWant => allCats.find((t) => t.id === id)?.need_want ?? allCats.find((t) => t.id === allCats.find((x) => x.id === id)?.parent_id)?.need_want ?? 'need';
+  const [nwTouched, setNwTouched] = useState(!!row);
+  const [needWant, setNeedWantRaw] = useState<NeedWant>(row?.need_want ?? (plan?.need_want ?? tagDefault(tagId)));
+  const setNeedWant = (v: NeedWant) => { setNeedWantRaw(v); setNwTouched(true); };
+  const follow = (cat: string, p?: Plan | null) => { if (!nwTouched) setNeedWantRaw(p?.need_want ?? (newPlan ? 'want' : tagDefault(cat))); };
+  const pickCat = (id: string) => { setCatId(id); setSubId(''); follow(id, plan); };
+  const pickSub = (id: string) => { const v = subId === id ? '' : id; setSubId(v); follow(v || catId, plan); };
+  const pickPlan = (id: string) => { setPlanId(id); setNewPlan(null); follow(tagId, plans.find((p) => p.id === id) ?? null); };
+
+  // Use dates: blank = used the day you paid. A plan lends its dates unless you set your own.
+  const planDates = plan?.starts_on ? { from: plan.starts_on, to: plan.ends_on ?? plan.starts_on } : null;
+  const ownDates = !!row?.use_from && !(planDates && row.use_from === planDates.from && row.use_to === planDates.to);
+  const [overTime, setOverTime] = useState(ownDates);
+  const [useFrom, setUseFrom] = useState(ownDates ? row!.use_from! : '');
+  const [useTo, setUseTo] = useState(ownDates ? row!.use_to! : '');
   const [spentOn, setSpentOn] = useState(row?.spent_on ?? defaultDate ?? todayISO());
   const [vendor, setVendor] = useState(row?.vendor ?? '');
   const [charged, setCharged] = useState(row?.charged_amount != null ? fmtNum(row.charged_amount) : '');
@@ -63,8 +93,14 @@ export function ExpenseSheet({ row, tags, buckets, defaultDate, onClose, onSaved
     e.preventDefault();
     rememberCurrency('expense', currency);
     rememberPaidWith(paidFrom);
-    run(() =>
-      save('expenses', {
+    const own = overTime && useFrom && useTo;
+    run(async () => {
+      let plan_id = planId || null;
+      if (newPlan?.name.trim()) {
+        plan_id = await insertPlan({ name: newPlan.name.trim(), need_want: needWant, starts_on: newPlan.from || null, ends_on: newPlan.to || newPlan.from || null });
+        onTagsChanged();
+      }
+      await save('expenses', {
         spent_on: spentOn,
         vendor: vendor || null,
         currency,
@@ -76,8 +112,13 @@ export function ExpenseSheet({ row, tags, buckets, defaultDate, onClose, onSaved
         reimbursable,
         settled_on: settled ? row?.settled_on ?? todayISO() : null,
         note: note || null,
-      }, row?.id),
-    );
+        need_want: needWant,
+        plan_id,
+        // Blank lets the database copy the plan's dates (and follow them if the plan moves).
+        use_from: own ? (useFrom <= useTo ? useFrom : useTo) : null,
+        use_to: own ? (useFrom <= useTo ? useTo : useFrom) : null,
+      }, row?.id);
+    });
   };
 
   return (
@@ -88,7 +129,26 @@ export function ExpenseSheet({ row, tags, buckets, defaultDate, onClose, onSaved
           <input inputMode="decimal" required autoFocus={!row} value={amount} onChange={(e) => { commas(e); setAmount(e.target.value); }} placeholder="0" />
         </label>
         <CurrencyField value={currency} onChange={setCurrency} />
-        {cats.length > 0 && <TagPicker label="Category" tags={cats} value={tagId} onChange={setTagId} onRenamed={onTagsChanged} />}
+        {cats.length > 0 && <TagPicker label="Category" tags={cats} value={catId} onChange={pickCat} onRenamed={onTagsChanged} />}
+        {subs.length > 0 && (
+          <fieldset className="chips subs">
+            <legend>{allCats.find((c) => c.id === catId)?.name}: which part? <em className="muted">(optional)</em></legend>
+            {subs.map((t) => (
+              <label key={t.id} className={`chip ${subId === t.id ? 'on' : ''}`}>
+                <input type="checkbox" checked={subId === t.id} onChange={() => pickSub(t.id)} />
+                {t.name}
+              </label>
+            ))}
+          </fieldset>
+        )}
+
+        <div className="field">
+          <span>Need or want</span>
+          <div className="segmented nw" role="radiogroup" aria-label="Need or want">
+            <button type="button" role="radio" aria-checked={needWant === 'need'} aria-selected={needWant === 'need'} onClick={() => setNeedWant('need')}>Need</button>
+            <button type="button" role="radio" aria-checked={needWant === 'want'} aria-selected={needWant === 'want'} onClick={() => setNeedWant('want')}>Want</button>
+          </div>
+        </div>
 
         <fieldset className="chips">
           <legend>Paid with</legend>
@@ -125,6 +185,57 @@ export function ExpenseSheet({ row, tags, buckets, defaultDate, onClose, onSaved
           </p>
         )}
 
+        <fieldset className="chips">
+          <legend>Part of a plan <em className="muted">(optional)</em></legend>
+          <label className={`chip ${!planId && !newPlan ? 'on' : ''}`}>
+            <input type="radio" name="plan" checked={!planId && !newPlan} onChange={() => pickPlan('')} />
+            None
+          </label>
+          {openPlans.map((p) => (
+            <label key={p.id} className={`chip ${planId === p.id ? 'on' : ''}`}>
+              <input type="radio" name="plan" checked={planId === p.id} onChange={() => pickPlan(p.id)} />
+              {p.name}
+            </label>
+          ))}
+          <label className={`chip dashed ${newPlan ? 'on' : ''}`}>
+            <input type="radio" name="plan" checked={!!newPlan} onChange={() => { setPlanId(''); setNewPlan({ name: '', from: '', to: '' }); if (!nwTouched) setNeedWantRaw('want'); }} />
+            + New plan
+          </label>
+        </fieldset>
+        {newPlan && (
+          <div className="stack inset">
+            <label className="field">
+              <span>Plan name</span>
+              <input required autoFocus value={newPlan.name} onChange={(e) => setNewPlan({ ...newPlan, name: e.target.value })} placeholder="e.g. TMB 2027" />
+            </label>
+            <div className="grid2">
+              <label className="field"><span>From</span><DateField label="From" value={newPlan.from} onChange={(v) => setNewPlan({ ...newPlan, from: v })} placeholder="Start" /></label>
+              <label className="field"><span>To</span><DateField label="To" value={newPlan.to} onChange={(v) => setNewPlan({ ...newPlan, to: v })} placeholder="End" /></label>
+            </div>
+          </div>
+        )}
+
+        {(planDates || (newPlan?.from)) && !overTime ? (
+          <p className="muted small hint-row">
+            Counts as spending {rangeLabel(planDates?.from ?? newPlan!.from, planDates?.to ?? (newPlan!.to || newPlan!.from))}, the plan’s dates.
+            <button type="button" className="link" onClick={() => { setOverTime(true); setUseFrom(planDates?.from ?? newPlan!.from); setUseTo(planDates?.to ?? (newPlan!.to || newPlan!.from)); }}>Use other dates</button>
+          </p>
+        ) : (
+          <label className="check">
+            <input type="checkbox" checked={overTime} onChange={(e) => {
+              setOverTime(e.target.checked);
+              if (e.target.checked && !useFrom) { setUseFrom(spentOn); setUseTo(addDays(spentOn, 70)); }
+            }} />
+            <span>I’ll use this over time <em className="muted">(voucher, pass, booking)</em></span>
+          </label>
+        )}
+        {overTime && (
+          <div className="grid2 inset">
+            <label className="field"><span>Use from</span><DateField required label="Use from" value={useFrom} onChange={setUseFrom} /></label>
+            <label className="field"><span>Use until</span><DateField required label="Use until" value={useTo} onChange={setUseTo} /></label>
+          </div>
+        )}
+
         <div className="segmented" role="radiogroup" aria-label="Status">
           <button type="button" role="radio" aria-checked={!settled} aria-selected={!settled} onClick={() => setSettled(false)}>Charged</button>
           <button type="button" role="radio" aria-checked={settled} aria-selected={settled} onClick={() => setSettled(true)}>Settled</button>
@@ -139,8 +250,13 @@ export function ExpenseSheet({ row, tags, buckets, defaultDate, onClose, onSaved
           <input value={note} onChange={(e) => setNote(e.target.value)} />
         </label>
         {error && <p className="error" role="alert">{error}</p>}
-        <Actions busy={busy} disabled={!paidFrom} onDelete={row ? () => run(() => remove('expenses', row.id)) : undefined} />
+        <Actions busy={busy} disabled={!paidFrom || (!!newPlan && !newPlan.name.trim())} onDelete={row ? () => run(() => remove('expenses', row.id)) : undefined} />
       </form>
     </Sheet>
   );
+}
+
+function addDays(iso: string, n: number): string {
+  const [y, m, d] = iso.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
 }
