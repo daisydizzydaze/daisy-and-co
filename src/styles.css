@@ -502,3 +502,15 @@ button.block-head:focus-visible { outline: 3px solid var(--pink); outline-offset
 .nw-toggle button { min-height: 32px; padding: 0 10px; border: none; background: var(--paper); font-size: 13px; font-weight: 600; cursor: pointer; }
 .nw-toggle button[aria-checked='true']:first-child { background: var(--mint); }
 .nw-toggle button[aria-checked='true']:last-child { background: var(--pink); }
+
+/* Wide sheets on the web: two columns side by side */
+.sheet-cols { display: flex; flex-direction: column; gap: 12px; }
+.sheet-cols > .col { min-width: 0; }
+@media (min-width: 960px) {
+  .sheet.wide { max-width: 920px; }
+  .sheet.wide .sheet-body { padding: 20px 28px 24px; }
+  .sheet.wide .sheet-cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0; align-items: start; }
+  .sheet.wide .sheet-cols > .col:first-child { padding-right: 28px; }
+  .sheet.wide .sheet-cols > .col + .col { padding-left: 28px; border-left: 1.5px dashed var(--line); }
+  .sheet.wide .plan-costs { border-bottom: none; margin-bottom: 0; }
+}

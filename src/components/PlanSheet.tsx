@@ -54,9 +54,10 @@ export function PlanSheet({ plan, expenses, tags, hkdOf, onClose, onSaved, onLog
   };
 
   return (
-    <Sheet title={plan ? plan.name : 'New plan'} onClose={onClose}>
+    <Sheet wide={!!plan} title={plan ? plan.name : 'New plan'} onClose={onClose}>
+      <div className={plan ? 'sheet-cols' : ''}>
       {plan && (
-        <section className="plan-costs stack">
+        <section className="plan-costs stack col">
           <div className="block-head">
             <div>
               <span className="eyebrow">Paid so far</span>
@@ -92,14 +93,14 @@ export function PlanSheet({ plan, expenses, tags, hkdOf, onClose, onSaved, onLog
         </section>
       )}
 
-      <form className="stack" onSubmit={submit}>
+      <form className="stack col" onSubmit={submit}>
         <label className="field">
           <span>Name</span>
           <input required autoFocus={!plan} value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. TMB 2027, Hokkaido, New laptop" />
         </label>
         <div className="grid2">
-          <label className="field"><span>From</span><DateField label="From" value={from} onChange={setFrom} placeholder="Start" /></label>
-          <label className="field"><span>To</span><DateField label="To" value={to} onChange={setTo} placeholder="End" /></label>
+          <label className="field"><span>From</span><DateField label="From" value={from} onChange={(v) => { setFrom(v); if (to && to < v) setTo(''); }} placeholder="Start" /></label>
+          <label className="field"><span>To</span><DateField label="To" value={to} openAt={from} onChange={setTo} placeholder="End" /></label>
         </div>
         <p className="muted small hint-row">Costs on this plan count as spending on these dates, wherever and whenever you paid.</p>
         <div className="field">
@@ -128,6 +129,7 @@ export function PlanSheet({ plan, expenses, tags, hkdOf, onClose, onSaved, onLog
         <Actions busy={busy} disabled={!name.trim()} onDelete={plan ? () => run(() => remove('plans', plan.id)) : undefined} />
         {plan && rows.length > 0 && <p className="muted small">Deleting the plan keeps its {rows.length} costs, just without the plan.</p>}
       </form>
+      </div>
     </Sheet>
   );
 }

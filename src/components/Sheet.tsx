@@ -1,14 +1,14 @@
 import { useEffect, useRef } from 'react';
 
 /** A bottom sheet on phones, a centred dialog on wider screens. */
-export function Sheet({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
+export function Sheet({ title, onClose, children, wide }: { title: string; onClose: () => void; children: React.ReactNode; wide?: boolean }) {
   const ref = useRef<HTMLDialogElement>(null);
   useEffect(() => {
     const d = ref.current;
     if (d && !d.open) d.showModal();
   }, []);
   return (
-    <dialog ref={ref} className="sheet" onClose={onClose} onClick={(e) => e.target === ref.current && onClose()}>
+    <dialog ref={ref} className={`sheet ${wide ? 'wide' : ''}`} onClose={onClose} onClick={(e) => e.target === ref.current && onClose()}>
       <div className="sheet-body">
         <header className="sheet-head">
           <h2>{title}</h2>
