@@ -546,3 +546,9 @@ input, select, textarea { font-size: 16px; }
   /* Save stays in reach at the bottom of the sheet */
   .sheet .actions { position: sticky; bottom: calc(-20px - env(safe-area-inset-bottom)); background: var(--bg); padding: 10px 0 calc(10px + env(safe-area-inset-bottom)); margin-bottom: calc(-20px - env(safe-area-inset-bottom)); z-index: 2; }
 }
+
+/* Settings › Quick log */
+.key-box { padding: 12px; border: 1.5px dashed var(--ink); border-radius: 14px; background: color-mix(in srgb, var(--yellow) 25%, var(--paper)); }
+.copy { display: block; width: 100%; margin: 6px 0; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); font-family: ui-monospace, Menlo, monospace; font-size: 12px; text-align: left; word-break: break-all; cursor: pointer; color: var(--ink); }
+.copy.short { display: inline-block; width: auto; max-width: min(100%, 240px); margin: 2px 0; padding: 2px 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle; }
+.recipe ol { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 12px; font-size: 14px; line-height: 1.5; }

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { commas, fmtNum } from '../lib/numInput';
 import { Select } from './Select';
 import { DateField } from './DateField';
+import { QuickLog } from './QuickLog';
 import { insertBucket, removeGroup, save, saveCurrencies, saveGroup } from '../lib/data';
 import { fetchRatesToHkd } from '../lib/fx';
 import { money, monthName, todayISO } from '../lib/format';
@@ -14,7 +15,7 @@ const LINKED: TagKind[] = ['opex', 'reserve', 'growth'];
 const LIQUIDITY = ['Liquid', 'Locked until age', 'Illiquid'];
 
 export function SetupScreen({ tags, buckets, groups: saved, onChange }: { tags: Tag[]; buckets: Bucket[]; groups: AccountGroup[]; onChange: () => void }) {
-  const [tab, setTab] = useState<'tags' | 'accounts' | 'currencies'>('accounts');
+  const [tab, setTab] = useState<'tags' | 'accounts' | 'currencies' | 'quick'>('accounts');
   // Before migration 004 there are no saved groups: use the built-in ones.
   const groups = saved.length ? saved : FALLBACK_GROUPS;
   const hasGroups = saved.length > 0;
@@ -44,10 +45,11 @@ export function SetupScreen({ tags, buckets, groups: saved, onChange }: { tags: 
         <button className="btn ghost small-btn push-right" onClick={() => supabase.auth.signOut()}>Sign out</button>
       </header>
 
-      <div className="segmented three" role="tablist">
+      <div className="segmented four" role="tablist">
         <button role="tab" aria-selected={tab === 'accounts'} onClick={() => setTab('accounts')}>Accounts</button>
         <button role="tab" aria-selected={tab === 'currencies'} onClick={() => setTab('currencies')}>Currencies</button>
         <button role="tab" aria-selected={tab === 'tags'} onClick={() => setTab('tags')}>Tags</button>
+        <button role="tab" aria-selected={tab === 'quick'} onClick={() => setTab('quick')}>Quick log</button>
       </div>
 
       {error && <p className="error card" role="alert">{error}</p>}
@@ -58,6 +60,8 @@ export function SetupScreen({ tags, buckets, groups: saved, onChange }: { tags: 
             <TagGroup key={k} kind={k} tags={tags.filter((t) => t.kind === k)} buckets={buckets} run={run} />
           ))}
         </div>
+      ) : tab === 'quick' ? (
+        <QuickLog />
       ) : tab === 'currencies' ? (
         <Currencies buckets={buckets} run={run} />
       ) : (
