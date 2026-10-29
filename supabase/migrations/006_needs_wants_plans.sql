@@ -36,10 +36,6 @@ create policy "own rows" on public.plans for all to authenticated
   using (user_id = auth.uid()) with check (user_id = auth.uid());
 
 -- ── Expenses: Need/Want, plan, use dates ───────────────────────
--- First run only: remember that need_want is new, so old expenses can follow their category below.
-create temp table if not exists _fresh_need_want as
-  select not exists (select 1 from information_schema.columns
-                      where table_schema = 'public' and table_name = 'expenses' and column_name = 'need_want') as fresh;
 alter table public.expenses add column if not exists need_want text not null default 'need' check (need_want in ('need','want'));
 alter table public.expenses add column if not exists plan_id uuid references public.plans on delete set null;
 alter table public.expenses add column if not exists use_from date;
@@ -137,11 +133,16 @@ begin
   return new;
 end $$;
 
--- Expenses logged before this update follow their category's default (first run only,
--- so a later re-run never undoes a Need/Want you've flipped yourself).
-update public.expenses e set need_want = t.need_want
-  from public.tags t
- where t.id = e.tag_id and t.need_want is not null
-   and (select fresh from _fresh_need_want);
-
-drop table _fresh_need_want;
+-- Expenses logged before this update follow their category's default. This runs once:
+-- a note on the column marks it done, so a re-run never undoes a Need/Want you've flipped.
+do $$
+begin
+  if col_description('public.expenses'::regclass,
+       (select attnum from pg_attribute where attrelid = 'public.expenses'::regclass and attname = 'need_want'))
+     is distinct from 'need_want: filled from categories' then
+    update public.expenses e set need_want = t.need_want
+      from public.tags t
+     where t.id = e.tag_id and t.need_want is not null;
+    comment on column public.expenses.need_want is 'need_want: filled from categories';
+  end if;
+end $$;
