@@ -1,9 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { commas, fmtNum } from '../lib/numInput';
 import { DateField } from './DateField';
 import { insertPlan, remove, save } from '../lib/data';
-import { monthName, statementMonth, todayISO } from '../lib/format';
-import { PAYS_AT_ONCE, type Bucket, type Expense, type NeedWant, type Plan, type Tag } from '../lib/types';
+import { monthName, shortMonth, statementMonth, todayISO } from '../lib/format';
+import { currencyLabel, PAYS_AT_ONCE, type Bucket, type Expense, type NeedWant, type Plan, type Tag } from '../lib/types';
 import { rangeLabel } from '../lib/spend';
 import { Actions, CurrencyField, lastCurrency, num, rememberCurrency, TagPicker, useSubmit } from './LineSheets';
 import { Sheet } from './Sheet';
@@ -78,6 +78,12 @@ export function ExpenseSheet({ row, tags, buckets, plans, defaultDate, defaultPl
   const [reimbursable, setReimbursable] = useState(row?.reimbursable ?? false);
   const [note, setNote] = useState(row?.note ?? '');
   const { busy, error, run } = useSubmit(onSaved);
+  const compact = useCompact();
+  const [openFold, setOpenFold] = useState<string>(row ? '' : 'category');
+  const fold = { compact, open: openFold, onOpen: setOpenFold };
+  const catName = allCats.find((c) => c.id === catId)?.name;
+  const subName = allCats.find((c) => c.id === subId)?.name;
+  const shortDay = (iso: string) => `${Number(iso.slice(8, 10))} ${shortMonth(iso.slice(0, 8) + '01')}`;
 
   const isCard = account?.type === 'Card';
   const foreign = isCard && account && currency !== account.currency;
@@ -125,11 +131,14 @@ export function ExpenseSheet({ row, tags, buckets, plans, defaultDate, defaultPl
     <Sheet wide title={row ? 'Edit expense' : 'Log expense'} onClose={onClose}>
       <form className="stack" onSubmit={submit}>
         <div className="sheet-cols"><div className="stack col">
-        <label className="field">
+        <label className="field amount">
           <span>Amount ({currency})</span>
           <input inputMode="decimal" required autoFocus={!row} value={amount} onChange={(e) => { commas(e); setAmount(e.target.value); }} placeholder="0" />
         </label>
-        <CurrencyField value={currency} onChange={setCurrency} />
+        <Fold id="currency" title="Currency" summary={currencyLabel(currency)} {...fold}>
+          <CurrencyField value={currency} onChange={(c) => { setCurrency(c); if (compact) setOpenFold(''); }} />
+        </Fold>
+        <Fold id="category" title="Category" summary={[[catName, subName].filter(Boolean).join(' › '), needWant === 'want' ? 'Want' : 'Need'].filter(Boolean).join(' · ')} {...fold}>
         {cats.length > 0 && <TagPicker label="Category" tags={cats} value={catId} onChange={pickCat} onRenamed={onTagsChanged} />}
         {subs.length > 0 && (
           <fieldset className="chips subs">
@@ -150,7 +159,9 @@ export function ExpenseSheet({ row, tags, buckets, plans, defaultDate, defaultPl
             <button type="button" role="radio" aria-checked={needWant === 'want'} aria-selected={needWant === 'want'} onClick={() => setNeedWant('want')}>Want</button>
           </div>
         </div>
+        </Fold>
 
+        <Fold id="paid" title="Paid with" summary={[account?.name, settled ? 'Settled' : 'Charged'].filter(Boolean).join(' · ')} {...fold}>
         <fieldset className="chips">
           <legend>Paid with</legend>
           {accounts.map((b) => (
@@ -169,7 +180,15 @@ export function ExpenseSheet({ row, tags, buckets, plans, defaultDate, defaultPl
           </label>
         )}
 
+        <div className="segmented" role="radiogroup" aria-label="Status">
+          <button type="button" role="radio" aria-checked={!settled} aria-selected={!settled} onClick={() => setSettled(false)}>Charged</button>
+          <button type="button" role="radio" aria-checked={settled} aria-selected={settled} onClick={() => setSettled(true)}>Settled</button>
+        </div>
+
+        </Fold>
+
         </div><div className="stack col">
+        <Fold id="when" title="Date & place" summary={[spentOn ? shortDay(spentOn) : null, vendor || null].filter(Boolean).join(' · ')} {...fold}>
         <div className="grid2">
           <label className="field">
             <span>Date</span>
@@ -187,6 +206,9 @@ export function ExpenseSheet({ row, tags, buckets, plans, defaultDate, defaultPl
           </p>
         )}
 
+        </Fold>
+
+        <Fold id="plan" title="Plan & timing" summary={[plan?.name ?? (newPlan ? newPlan.name || 'New plan' : 'None'), overTime && useFrom && useTo ? `used ${rangeLabel(useFrom, useTo)}` : null].filter(Boolean).join(' · ')} {...fold}>
         <fieldset className="chips">
           <legend>Part of a plan <em className="muted">(optional)</em></legend>
           <label className={`chip ${!planId && !newPlan ? 'on' : ''}`}>
@@ -238,11 +260,9 @@ export function ExpenseSheet({ row, tags, buckets, plans, defaultDate, defaultPl
           </div>
         )}
 
-        <div className="segmented" role="radiogroup" aria-label="Status">
-          <button type="button" role="radio" aria-checked={!settled} aria-selected={!settled} onClick={() => setSettled(false)}>Charged</button>
-          <button type="button" role="radio" aria-checked={settled} aria-selected={settled} onClick={() => setSettled(true)}>Settled</button>
-        </div>
+        </Fold>
 
+        <Fold id="more" title="More" summary={[reimbursable ? 'Paid back' : null, note || null].filter(Boolean).join(' · ') || 'Note, paid back'} {...fold}>
         <label className="check">
           <input type="checkbox" checked={reimbursable} onChange={(e) => setReimbursable(e.target.checked)} />
           <span>Someone will pay me back <em className="muted">(left out of totals)</em></span>
@@ -251,6 +271,7 @@ export function ExpenseSheet({ row, tags, buckets, plans, defaultDate, defaultPl
           <span>Note</span>
           <input value={note} onChange={(e) => setNote(e.target.value)} />
         </label>
+        </Fold>
         </div></div>
         {error && <p className="error" role="alert">{error}</p>}
         <Actions busy={busy} disabled={!paidFrom || (!!newPlan && !newPlan.name.trim())} onDelete={row ? () => run(() => remove('expenses', row.id)) : undefined} />
@@ -262,4 +283,35 @@ export function ExpenseSheet({ row, tags, buckets, plans, defaultDate, defaultPl
 function addDays(iso: string, n: number): string {
   const [y, m, d] = iso.split('-').map(Number);
   return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
+}
+
+/** Phones fold the log sheet into sections; wider screens show everything in two columns. */
+function useCompact(): boolean {
+  const q = '(max-width: 959px)';
+  const [m, setM] = useState(() => typeof window !== 'undefined' && !!window.matchMedia?.(q).matches);
+  useEffect(() => {
+    const mq = window.matchMedia?.(q);
+    if (!mq) return;
+    const on = () => setM(mq.matches);
+    mq.addEventListener('change', on);
+    return () => mq.removeEventListener('change', on);
+  }, []);
+  return m;
+}
+
+function Fold({ id, title, summary, compact, open, onOpen, children }: {
+  id: string; title: string; summary: string; compact: boolean; open: string; onOpen: (id: string) => void; children: React.ReactNode;
+}) {
+  if (!compact) return <>{children}</>;
+  const isOpen = open === id;
+  return (
+    <div className={`fold ${isOpen ? 'open' : ''}`}>
+      <button type="button" className="fold-head" aria-expanded={isOpen} onClick={() => onOpen(isOpen ? '' : id)}>
+        <span className="fold-title">{title}</span>
+        <span className="fold-sum">{summary}</span>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
+      </button>
+      {isOpen && <div className="fold-body stack">{children}</div>}
+    </div>
+  );
 }

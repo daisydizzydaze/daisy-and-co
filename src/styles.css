@@ -514,3 +514,35 @@ button.block-head:focus-visible { outline: 3px solid var(--pink); outline-offset
   .sheet.wide .sheet-cols > .col + .col { padding-left: 28px; border-left: 1.5px dashed var(--line); }
   .sheet.wide .plan-costs { border-bottom: none; margin-bottom: 0; }
 }
+
+/* iPhone: iOS zooms into any text box under 16px, which crops the sheet. Keep them at 16px. */
+input, select, textarea { font-size: 16px; }
+
+/* Phones: the screen bar is docked to the bottom edge instead of floating over the content. */
+@media (max-width: 959px) {
+  .app { padding-bottom: calc(72px + env(safe-area-inset-bottom)); }
+  .tabbar { left: 0; right: 0; bottom: 0; transform: none; width: 100%; max-width: none; border: none; border-top: 1.5px solid var(--ink); border-radius: 0; padding: 6px 12px calc(6px + env(safe-area-inset-bottom)); background: var(--paper); }
+  .tabbar button { min-height: 50px; }
+  .fab { bottom: calc(80px + env(safe-area-inset-bottom)); }
+}
+
+/* Log sheet on phones: one section open at a time, the rest fold to a summary line. */
+.fold { border: 1.5px solid var(--ink); border-radius: 16px; background: var(--paper); }
+.fold-head { width: 100%; min-height: 52px; display: flex; align-items: center; gap: 10px; padding: 8px 14px; background: none; border: none; text-align: left; cursor: pointer; font: inherit; color: inherit; }
+.fold-title { font-weight: 700; font-size: 14px; flex: none; }
+.fold-sum { flex: 1; min-width: 0; text-align: right; font-size: 14px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fold-head svg { flex: none; transition: transform 0.2s; }
+.fold.open { background: color-mix(in srgb, var(--yellow) 18%, var(--paper)); }
+.fold.open .fold-head svg { transform: rotate(180deg); }
+.fold.open .fold-sum { visibility: hidden; }
+.fold-body { padding: 0 14px 14px; }
+.fold-body > .chips:first-child > legend, .fold-body > .field:first-child > span:first-child { display: none; }
+.amount-row { display: flex; gap: 8px; align-items: stretch; }
+.amount-row input { font-size: 24px; font-weight: 600; min-height: 56px; }
+.amount-row .cur-btn { flex: none; min-width: 72px; border: 1.5px solid var(--ink); border-radius: 12px; background: var(--pink); font-weight: 700; cursor: pointer; }
+@media (max-width: 959px) {
+  .fold-body .chips { gap: 6px; }
+  .fold-body .chip { min-height: 36px; padding: 0 12px; }
+  /* Save stays in reach at the bottom of the sheet */
+  .sheet .actions { position: sticky; bottom: calc(-20px - env(safe-area-inset-bottom)); background: var(--bg); padding: 10px 0 calc(10px + env(safe-area-inset-bottom)); margin-bottom: calc(-20px - env(safe-area-inset-bottom)); z-index: 2; }
+}
