@@ -10,6 +10,22 @@ export interface Tag {
   color: string | null;
   sort: number;
   archived: boolean;
+  need_want?: NeedWant | null; // expense categories: the default for new expenses
+}
+
+export type NeedWant = 'need' | 'want';
+
+/** A trip or big buy that many expenses belong to, e.g. "TMB 2027". */
+export interface Plan {
+  id: string;
+  name: string;
+  need_want: NeedWant;
+  starts_on: string | null;
+  ends_on: string | null;
+  budget: number | null;
+  budget_currency: string | null;
+  done: boolean;
+  note: string | null;
 }
 
 export interface Bucket {
@@ -82,6 +98,10 @@ export interface Expense {
   reimbursable: boolean;
   settled_on: string | null;
   note: string | null;
+  need_want?: NeedWant; // arrives with migration 006
+  plan_id?: string | null;
+  use_from?: string | null; // when you use what you paid for; empty = the paid date
+  use_to?: string | null;
 }
 
 export interface Line {

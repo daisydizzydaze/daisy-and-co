@@ -71,6 +71,7 @@ type Run = (fn: () => Promise<void>) => Promise<boolean>;
 
 /** Turn database errors into something readable. */
 function friendly(msg: string): string {
+  if (msg.includes('need_want') || msg.includes('plans')) return 'The database needs the latest update first. Run 006_needs_wants_plans.sql in the Supabase SQL Editor.';
   if (msg.includes('buckets_user_id_name_key')) return 'You already have an account with that name. It may be a closed one: tap "Show closed" below to reopen it, or pick another name.';
   if (msg.includes('tags_user_id_kind_name_key')) return 'There’s already a tag with that name in this group. Pick another name.';
   if (msg.includes('account_groups_user_id_name_key')) return 'You already have a group with that name.';
@@ -82,14 +83,21 @@ function friendly(msg: string): string {
 
 function TagGroup({ kind, tags, buckets, run }: { kind: TagKind; tags: Tag[]; buckets: Bucket[]; run: Run }) {
   const [name, setName] = useState('');
+  const [under, setUnder] = useState('');
   const [showArchived, setShowArchived] = useState(false);
-  const live = tags.filter((t) => !t.archived);
-  const archived = tags.filter((t) => t.archived);
+  // Sub-categories sit right under their parent.
+  const ordered = [...tags.filter((t) => !t.parent_id || !tags.some((p) => p.id === t.parent_id))]
+    .flatMap((t) => [t, ...tags.filter((c) => c.parent_id === t.id)]);
+  const live = ordered.filter((t) => !t.archived);
+  const archived = ordered.filter((t) => t.archived);
+  const isExpense = kind === 'expense';
+  const parents = tags.filter((t) => !t.parent_id && !t.archived);
 
   function add(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim()) return;
-    run(() => save('tags', { kind, name: name.trim(), sort: tags.length + 1 }));
+    const parent = tags.find((t) => t.id === under);
+    run(() => save('tags', { kind, name: name.trim(), sort: tags.length + 1, ...(isExpense ? { parent_id: under || null, need_want: parent?.need_want ?? 'need' } : {}) }));
     setName('');
   }
 
@@ -98,7 +106,7 @@ function TagGroup({ kind, tags, buckets, run }: { kind: TagKind; tags: Tag[]; bu
       <h2>{KIND_LABEL[kind]}</h2>
       <ul className="tag-list">
         {(showArchived ? [...live, ...archived] : live).map((t) => (
-          <li key={t.id} className={t.archived ? 'archived' : ''}>
+          <li key={t.id} className={`${t.archived ? 'archived' : ''} ${t.parent_id ? 'sub' : ''}`}>
             <input
               aria-label={`Rename ${t.name}`}
               defaultValue={t.name}
@@ -112,14 +120,28 @@ function TagGroup({ kind, tags, buckets, run }: { kind: TagKind; tags: Tag[]; bu
                 options={[{ value: '', label: 'No account' }, ...buckets.map((b) => ({ value: b.id, label: b.name }))]}
               />
             )}
+            {isExpense && (
+              <div className="nw-toggle" role="radiogroup" aria-label={`${t.name}: need or want`}>
+                {(['need', 'want'] as const).map((k) => (
+                  <button key={k} role="radio" aria-checked={(t.need_want ?? 'need') === k} onClick={() => run(() => save('tags', { need_want: k }, t.id))}>
+                    {k === 'need' ? 'Need' : 'Want'}
+                  </button>
+                ))}
+              </div>
+            )}
             <button className="btn ghost small-btn" onClick={() => run(() => save('tags', { archived: !t.archived }, t.id))}>
               {t.archived ? 'Restore' : 'Archive'}
             </button>
           </li>
         ))}
       </ul>
+      {isExpense && <p className="muted small">Need or Want sets the default for new expenses. You can still flip it on any one expense.</p>}
       <form className="add-row" onSubmit={add}>
-        <input placeholder={`New ${KIND_LABEL[kind].toLowerCase()} tag`} value={name} onChange={(e) => setName(e.target.value)} />
+        <input placeholder={isExpense ? 'New category' : `New ${KIND_LABEL[kind].toLowerCase()} tag`} value={name} onChange={(e) => setName(e.target.value)} />
+        {isExpense && (
+          <Select label="Under" value={under} onChange={setUnder} className="under"
+            options={[{ value: '', label: 'Top level' }, ...parents.map((p) => ({ value: p.id, label: `Under ${p.name}` }))]} />
+        )}
         <button className="btn primary small-btn">Add</button>
       </form>
       {archived.length > 0 && (

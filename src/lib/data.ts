@@ -1,6 +1,6 @@
 import { supabase } from './supabase';
 import { addMonths } from './format';
-import { setCurrencies, type AccountGroup, type Allocation, type Bucket, type Expense, type FxRate, type Income, type Line, type Statement, type Tag } from './types';
+import { setCurrencies, type AccountGroup, type Allocation, type Bucket, type Expense, type FxRate, type Income, type Line, type Plan, type Statement, type Tag } from './types';
 
 function check<T>(res: { data: T | null; error: { message: string } | null }): T {
   if (res.error) throw new Error(res.error.message);
@@ -17,12 +17,13 @@ export interface MonthData {
   bills: Expense[];
 }
 
-export async function loadSetup(): Promise<{ tags: Tag[]; buckets: Bucket[]; groups: AccountGroup[]; currencies: string[] }> {
-  const [tags, buckets, groups, settings] = await Promise.all([
+export async function loadSetup(): Promise<{ tags: Tag[]; buckets: Bucket[]; groups: AccountGroup[]; currencies: string[]; plans: Plan[] }> {
+  const [tags, buckets, groups, settings, plans] = await Promise.all([
     supabase.from('tags').select('*').order('kind').order('sort').order('name'),
     supabase.from('buckets').select('*').order('sort').order('name'),
     supabase.from('account_groups').select('*').order('sort').order('name'),
     supabase.from('settings').select('*').maybeSingle(),
+    supabase.from('plans').select('*').order('done').order('starts_on', { nullsFirst: false }).order('name'),
   ]);
   // Groups and the currency list arrive with migration 004; until then, fall back quietly.
   const s = settings.data as { currencies?: string[] } | null;
@@ -32,6 +33,8 @@ export async function loadSetup(): Promise<{ tags: Tag[]; buckets: Bucket[]; gro
     buckets: check(buckets) ?? [],
     groups: groups.error ? [] : (groups.data as AccountGroup[]) ?? [],
     currencies: s?.currencies ?? [],
+    // Plans arrive with migration 006; until then there are none.
+    plans: plans.error ? [] : (plans.data as Plan[]) ?? [],
   };
 }
 
@@ -78,14 +81,14 @@ export async function loadMonth(month: string): Promise<MonthData> {
 
 type Row = Record<string, unknown>;
 
-export async function save(table: 'income' | 'allocations' | 'tags' | 'buckets' | 'expenses', row: Row, id?: string) {
+export async function save(table: 'income' | 'allocations' | 'tags' | 'buckets' | 'expenses' | 'plans', row: Row, id?: string) {
   const res = id
     ? await supabase.from(table).update(row).eq('id', id)
     : await supabase.from(table).insert(row);
   if (res.error) throw new Error(res.error.message);
 }
 
-export async function remove(table: 'income' | 'allocations' | 'expenses', id: string) {
+export async function remove(table: 'income' | 'allocations' | 'expenses' | 'plans', id: string) {
   const res = await supabase.from(table).delete().eq('id', id);
   if (res.error) throw new Error(res.error.message);
 }
@@ -101,13 +104,38 @@ export async function copyPlan(from: string, to: string): Promise<number> {
   return res.data as number;
 }
 
-/** Charges made in a calendar month, or landing on a statement that closes in it. */
-export async function loadExpenses(month: string): Promise<{ expenses: Expense[]; fx: FxRate[] }> {
-  const [expenses, fx] = await Promise.all([
+export interface ExpenseData {
+  /** Paid in the month, or on a statement closing in it, or used during it. */
+  expenses: Expense[];
+  /** Every expense that belongs to a plan, for the plans' running totals. */
+  planned: Expense[];
+  fx: FxRate[];
+}
+
+/** Last day of a month key, as YYYY-MM-DD. */
+export function monthEnd(month: string): string {
+  const [y, m] = month.split('-').map(Number);
+  return new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10);
+}
+
+export async function insertPlan(row: Row): Promise<string> {
+  const res = await supabase.from('plans').insert(row).select('id').single();
+  if (res.error) throw new Error(res.error.message);
+  return (res.data as { id: string }).id;
+}
+
+export async function loadExpenses(month: string): Promise<ExpenseData> {
+  const [expenses, used, planned, fx] = await Promise.all([
     supabase.from('expenses').select('*').or(`budget_month.eq.${month},statement_month.eq.${month}`).order('spent_on', { ascending: false }).order('created_at', { ascending: false }),
-    supabase.from('fx_rates').select('*').lte('month', month).order('month', { ascending: false }),
+    supabase.from('expenses').select('*').lte('use_from', monthEnd(month)).gte('use_to', month),
+    supabase.from('expenses').select('*').not('plan_id', 'is', null),
+    supabase.from('fx_rates').select('*').order('month', { ascending: false }),
   ]);
-  return { expenses: check(expenses) ?? [], fx: check(fx) ?? [] };
+  const rows = check(expenses) ?? [];
+  // Use dates and plans arrive with migration 006; until then those two come back empty.
+  const seen = new Set(rows.map((e) => e.id));
+  const extra = used.error ? [] : ((used.data as Expense[]) ?? []).filter((e) => !seen.has(e.id));
+  return { expenses: [...rows, ...extra], planned: planned.error ? [] : (planned.data as Expense[]) ?? [], fx: check(fx) ?? [] };
 }
 
 /** Mark every charge on one card's statement as settled (or back to charged). */
