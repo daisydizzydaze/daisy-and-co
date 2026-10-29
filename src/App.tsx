@@ -13,7 +13,9 @@ type View = 'allocation' | 'expenses' | 'setup';
 
 export function App() {
   const [session, setSession] = useState<Session | null | undefined>(undefined);
-  const [view, setView] = useState<View>('allocation');
+  // A quick-log link (…/daisy-and-co/?log, e.g. from an iPhone Shortcut) opens straight to a new expense.
+  const [quickLog] = useState(() => /[?&#]log\b/.test(window.location.search + window.location.hash));
+  const [view, setView] = useState<View>(quickLog ? 'expenses' : 'allocation');
   const [month, setMonth] = useState(defaultBudgetMonth());
   const [tags, setTags] = useState<Tag[]>([]);
   const [buckets, setBuckets] = useState<Bucket[]>([]);
@@ -61,7 +63,7 @@ export function App() {
         {view === 'allocation' ? (
           <AllocationScreen month={month} setMonth={setMonth} tags={tags} buckets={buckets} onTagsChanged={reloadSetup} />
         ) : view === 'expenses' ? (
-          <ExpenseScreen tags={tags} buckets={buckets} plans={plans} onTagsChanged={reloadSetup} />
+          <ExpenseScreen tags={tags} buckets={buckets} plans={plans} onTagsChanged={reloadSetup} quickLog={quickLog} />
         ) : (
           <SetupScreen tags={tags} buckets={buckets} groups={groups} onChange={reloadSetup} />
         )}
