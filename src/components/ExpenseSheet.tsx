@@ -122,8 +122,9 @@ export function ExpenseSheet({ row, tags, buckets, plans, defaultDate, defaultPl
   };
 
   return (
-    <Sheet title={row ? 'Edit expense' : 'Log expense'} onClose={onClose}>
+    <Sheet wide title={row ? 'Edit expense' : 'Log expense'} onClose={onClose}>
       <form className="stack" onSubmit={submit}>
+        <div className="sheet-cols"><div className="stack col">
         <label className="field">
           <span>Amount ({currency})</span>
           <input inputMode="decimal" required autoFocus={!row} value={amount} onChange={(e) => { commas(e); setAmount(e.target.value); }} placeholder="0" />
@@ -168,6 +169,7 @@ export function ExpenseSheet({ row, tags, buckets, plans, defaultDate, defaultPl
           </label>
         )}
 
+        </div><div className="stack col">
         <div className="grid2">
           <label className="field">
             <span>Date</span>
@@ -209,8 +211,8 @@ export function ExpenseSheet({ row, tags, buckets, plans, defaultDate, defaultPl
               <input required autoFocus value={newPlan.name} onChange={(e) => setNewPlan({ ...newPlan, name: e.target.value })} placeholder="e.g. TMB 2027" />
             </label>
             <div className="grid2">
-              <label className="field"><span>From</span><DateField label="From" value={newPlan.from} onChange={(v) => setNewPlan({ ...newPlan, from: v })} placeholder="Start" /></label>
-              <label className="field"><span>To</span><DateField label="To" value={newPlan.to} onChange={(v) => setNewPlan({ ...newPlan, to: v })} placeholder="End" /></label>
+              <label className="field"><span>From</span><DateField label="From" value={newPlan.from} onChange={(v) => setNewPlan({ ...newPlan, from: v, to: newPlan.to && newPlan.to < v ? '' : newPlan.to })} placeholder="Start" /></label>
+              <label className="field"><span>To</span><DateField label="To" value={newPlan.to} openAt={newPlan.from} onChange={(v) => setNewPlan({ ...newPlan, to: v })} placeholder="End" /></label>
             </div>
           </div>
         )}
@@ -232,7 +234,7 @@ export function ExpenseSheet({ row, tags, buckets, plans, defaultDate, defaultPl
         {overTime && (
           <div className="grid2 inset">
             <label className="field"><span>Use from</span><DateField required label="Use from" value={useFrom} onChange={setUseFrom} /></label>
-            <label className="field"><span>Use until</span><DateField required label="Use until" value={useTo} onChange={setUseTo} /></label>
+            <label className="field"><span>Use until</span><DateField required label="Use until" value={useTo} openAt={useFrom} onChange={setUseTo} /></label>
           </div>
         )}
 
@@ -249,6 +251,7 @@ export function ExpenseSheet({ row, tags, buckets, plans, defaultDate, defaultPl
           <span>Note</span>
           <input value={note} onChange={(e) => setNote(e.target.value)} />
         </label>
+        </div></div>
         {error && <p className="error" role="alert">{error}</p>}
         <Actions busy={busy} disabled={!paidFrom || (!!newPlan && !newPlan.name.trim())} onDelete={row ? () => run(() => remove('expenses', row.id)) : undefined} />
       </form>

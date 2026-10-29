@@ -14,8 +14,10 @@ export function prettyDate(v: string): string {
 }
 
 /** A date input with our own calendar, so it matches the rest of the app. Value is YYYY-MM-DD or ''. */
-export function DateField({ value, onChange, required, placeholder = 'Pick a date', label }: {
+export function DateField({ value, onChange, required, placeholder = 'Pick a date', label, openAt }: {
   value: string; onChange: (v: string) => void; required?: boolean; placeholder?: string; label?: string;
+  /** When empty (or set before this date), the calendar opens on this date's month, e.g. an end date opens on the start month. */
+  openAt?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [view, setView] = useState<'days' | 'months'>('days');
@@ -37,13 +39,15 @@ export function DateField({ value, onChange, required, placeholder = 'Pick a dat
 
   function toggle() {
     if (!open) {
-      const s = value || todayIso();
+      const s = (openAt && (!value || value < openAt) ? openAt : value) || todayIso();
       setY(Number(s.slice(0, 4)));
       setM(Number(s.slice(5, 7)) - 1);
       setView('days');
       // Open towards whichever side has room.
       const r = box.current?.getBoundingClientRect();
-      setAlignRight(!!r && r.left + 296 > window.innerWidth - 12);
+      // Inside a sheet, stay within the sheet so the calendar isn't cut off at its edge.
+      const edge = box.current?.closest('dialog')?.getBoundingClientRect().right ?? window.innerWidth;
+      setAlignRight(!!r && r.left + 296 > Math.min(edge, window.innerWidth) - 12);
     }
     setOpen(!open);
   }
