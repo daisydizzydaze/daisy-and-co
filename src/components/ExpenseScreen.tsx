@@ -17,13 +17,23 @@ interface Props {
   buckets: Bucket[];
   plans: Plan[];
   onTagsChanged: () => void;
+  /** Open the log sheet as soon as accounts have loaded. */
+  quickLog?: boolean;
 }
 
-export function ExpenseScreen({ tags, buckets, plans, onTagsChanged }: Props) {
+export function ExpenseScreen({ tags, buckets, plans, onTagsChanged, quickLog }: Props) {
   const [month, setMonth] = useState(thisMonth());
   const [data, setData] = useState<ExpenseData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<{ row?: Expense; plan?: string } | null>(null);
+  const [quickDone, setQuickDone] = useState(!quickLog);
+  useEffect(() => {
+    if (quickDone || buckets.length === 0) return;
+    setQuickDone(true);
+    setEditing({});
+    // Drop ?log from the address so a refresh doesn't open another one.
+    window.history.replaceState(null, '', window.location.pathname);
+  }, [quickDone, buckets.length]);
   const [planOpen, setPlanOpen] = useState<{ plan?: Plan } | null>(null);
   const [nw, setNw] = useState<NeedWant | ''>('');
   const [filter, setFilter] = useState<Filter>('all');
