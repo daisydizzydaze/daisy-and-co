@@ -94,27 +94,45 @@ export function QuickLog() {
       </section>
 
       <section className="card stack recipe">
-        <h2>Build the Shortcut (once, about 5 minutes)</h2>
-        <p className="muted small">In the Shortcuts app tap +, then add these actions in order. Tap a grey box to copy it.</p>
+        <h2>Build the Shortcut (once, about 10 minutes)</h2>
+        <p className="muted small">
+          In the Shortcuts app tap +, then add these actions in order with <b>Search Actions</b>. Tap a grey box to copy it.
+          Headers and JSON fields each have two boxes: <b>Key</b> is the label (type it), <b>Text</b> is the value (paste it).
+        </p>
         <ol>
           <li>
             <strong>Get Contents of URL</strong>
             <Copy v={`${URL_BASE}/rest/v1/rpc/quick_options`} />
-            Tap ›: Method <b>POST</b>. Headers: <b>apikey</b> = <Copy v={ANON} short />{jwt && <> and <b>Authorization</b> = <Copy v={`Bearer ${ANON}`} short /></>}.
-            Request Body <b>JSON</b>, one Text field: <b>key</b> = <Copy v={key} short />
+            Tap ›. Method <b>POST</b>. Add new header: Key <b>apikey</b>, Text <Copy v={ANON} short />
+            {jwt && <>Add a second header: Key <b>Authorization</b>, Text <Copy v={`Bearer ${ANON}`} short /></>}
+            Request Body <b>JSON</b>, Add new field › Text: Key <b>key</b>, Text <Copy v={key} short />
           </li>
-          <li><strong>Ask for Input</strong>: type <b>Number</b>, prompt “How much?”</li>
-          <li><strong>Get Dictionary Value</strong>: <b>categories</b> in <i>Contents of URL</i>, then <strong>Choose from List</strong> (prompt “Category”)</li>
-          <li><strong>Get Dictionary Value</strong>: <b>accounts</b> in <i>Contents of URL</i>, then <strong>Choose from List</strong> (prompt “Paid with”). Your most-used account is at the top.</li>
-          <li><em>Optional:</em> <strong>Ask for Input</strong>, type <b>Text</b>, prompt “Where?”</li>
+          <li><strong>Ask for Input</strong>: change Text to <b>Number</b>, prompt “How much?”</li>
+          <li>
+            <strong>Get Dictionary Value</strong>: Key <b>categories</b>. Tap the last slot › Clear › Select Variable › tap <i>Contents of URL</i> under step 1.
+            Then <strong>Choose from List</strong> (tap ›, prompt “Category”).
+            Then <strong>Set Variable</strong>: name <b>Cat</b>, value <i>Selected Item</i>.
+          </li>
+          <li>
+            Same again for the card: <strong>Get Dictionary Value</strong> with Key <b>accounts</b> in <i>Contents of URL</i> from step 1,
+            <strong>Choose from List</strong> (prompt “Paid with”), <strong>Set Variable</strong> named <b>Card</b>. Your most-used account is at the top.
+          </li>
           <li>
             <strong>Get Contents of URL</strong>
             <Copy v={`${URL_BASE}/rest/v1/rpc/quick_log`} />
-            Same method and headers as step 1. JSON body: <b>key</b> = your key, <b>amount</b> (Number) = <i>Provided Input</i> from step 2,{' '}
-            <b>category</b> = <i>Chosen Item</i> from step 3, <b>account</b> = <i>Chosen Item</i> from step 4, and optionally <b>vendor</b> = step 5.
+            Same method and headers as step 1. JSON fields:
+            Text <b>key</b> = your key ·
+            Number <b>amount</b> = <i>Provided Input</i> ·
+            Text <b>category</b> = <b>Cat</b> ·
+            Text <b>account</b> = <b>Card</b>.
+            Pick the variables from the row above the keyboard.
           </li>
-          <li><strong>Show Notification</strong> with <i>Contents of URL</i>. It reads like “Logged TWD 45.00 · Coffee &amp; drinks · TWD cash”.</li>
+          <li><strong>Show Notification</strong> with <i>Contents of URL</i> from step 5. It reads like “Logged TWD 45.00 · Coffee &amp; drinks · TWD cash”.</li>
         </ol>
+        <p className="muted small">
+          If it says “No account called” followed by a whole list, the account field is linked to the list instead of <b>Card</b>. Same for category and <b>Cat</b>.
+          If it says it “could not find the function”, a field is missing or its value is empty.
+        </p>
         <p className="muted small">
           Name it “Log expense”. Then Settings › Action Button › Shortcut, or add a Shortcuts widget to your home or Lock Screen.
           The date is today. The currency is whatever you last used on that account this week (TWD while you’re in Taiwan), otherwise the account’s own currency.
