@@ -552,3 +552,8 @@ input, select, textarea { font-size: 16px; }
 .copy { display: block; width: 100%; margin: 6px 0; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); font-family: ui-monospace, Menlo, monospace; font-size: 12px; text-align: left; word-break: break-all; cursor: pointer; color: var(--ink); }
 .copy.short { display: inline-block; width: auto; max-width: min(100%, 240px); margin: 2px 0; padding: 2px 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle; }
 .recipe ol { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 12px; font-size: 14px; line-height: 1.5; }
+
+/* Refunds and card credits */
+.segmented.kind { max-width: 260px; }
+.segmented.kind button[aria-selected='true']:last-child { background: var(--mint); color: var(--ink); }
+.num.credit { color: color-mix(in srgb, #1F7A4D 85%, var(--ink)); }
