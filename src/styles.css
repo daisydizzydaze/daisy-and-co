@@ -230,7 +230,7 @@ input:focus-visible, select:focus-visible, button:focus-visible { outline: 3px s
 .statements h2, .later h2 { font-size: 17px; }
 .statement-row { gap: 8px; }
 .row.picked .tag { text-decoration: underline; text-decoration-thickness: 2px; text-decoration-color: var(--pink); }
-.cat-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(60px, 1.2fr) auto; gap: 8px 10px; align-items: center; }
+.cat-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(60px, 1.2fr) auto auto; gap: 8px 10px; align-items: center; }
 .cat-list li { display: contents; }
 .cat-name { font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cat-list .meter { margin: 0; max-width: none; }
@@ -557,3 +557,4 @@ input, select, textarea { font-size: 16px; }
 .segmented.kind { max-width: 260px; }
 .segmented.kind button[aria-selected='true']:last-child { background: var(--mint); color: var(--ink); }
 .num.credit { color: color-mix(in srgb, #1F7A4D 85%, var(--ink)); }
+.cat-pct { text-align: right; min-width: 2.6em; }

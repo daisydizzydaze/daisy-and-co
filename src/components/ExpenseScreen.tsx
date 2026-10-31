@@ -263,7 +263,7 @@ export function ExpenseScreen({ tags, buckets, plans, onTagsChanged, quickLog }:
                 <details className="card later cats" open={wide}>
                   <summary>
                     <h2>By category</h2>
-                    <span className="muted small">{tagById.get(byCategory[0][0])?.name ?? 'Uncategorised'} {d.show(byCategory[0][1])}{byCategory.length > 1 ? ` + ${byCategory.length - 1} more` : ''}</span>
+                    <span className="muted small">{tagById.get(byCategory[0][0])?.name ?? 'Uncategorised'} {d.show(byCategory[0][1])}{total > 0 ? ` (${Math.round((byCategory[0][1] / total) * 100)}%)` : ''}{byCategory.length > 1 ? ` + ${byCategory.length - 1} more` : ''}</span>
                   </summary>
                   <ul className="cat-list">
                     {byCategory.map(([id, v]) => (
@@ -271,6 +271,7 @@ export function ExpenseScreen({ tags, buckets, plans, onTagsChanged, quickLog }:
                         <span className="cat-name">{tagById.get(id)?.name ?? 'Uncategorised'}</span>
                         <span className="meter"><span className="grow" style={{ width: `${byCategory[0][1] > 0 ? (Math.max(0, v) / byCategory[0][1]) * 100 : 0}%` }} /></span>
                         <span className="num small">{d.show(v)}</span>
+                        <span className="num small muted cat-pct">{total > 0 ? (v > 0 && v / total < 0.005 ? '<1%' : `${Math.round((v / total) * 100)}%`) : ''}</span>
                       </li>
                     ))}
                   </ul>
