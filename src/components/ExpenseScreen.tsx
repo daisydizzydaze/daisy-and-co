@@ -71,22 +71,23 @@ export function ExpenseScreen({ tags, buckets, plans, onTagsChanged, quickLog }:
   const hkdOf = useMemo(() => makeHkdOf(data?.fx ?? []), [data]);
 
   // Paid this month (the list and the cards) vs. used this month (spending: the total, Need/Want and categories).
+  // Refunds (minus amounts) are kept apart from spending: they only lower the card bill and show on their own line.
+  const isRefund = (e: Expense) => Number(e.amount) < 0;
   const spent = (data?.expenses ?? []).filter((e) => e.budget_month === month);
-  const counted = spent.filter((e) => !e.reimbursable);
+  const counted = spent.filter((e) => !e.reimbursable && !isRefund(e));
+  const refundRows = spent.filter((e) => !e.reimbursable && isRefund(e));
+  const refundTotal = -refundRows.reduce((s, e) => s + (hkdOf(e) ?? 0), 0);
   const paidTotal = counted.reduce((s, e) => s + (hkdOf(e) ?? 0), 0);
   const toSettle = spent.filter((e) => !e.settled_on).length;
   const used = (data?.expenses ?? [])
-    .filter((e) => !e.reimbursable)
+    .filter((e) => !e.reimbursable && !isRefund(e))
     .map((e) => ({ e, v: (hkdOf(e) ?? 0) * shareIn(e, month) }))
-    .filter((x) => x.v !== 0);  // refunds count as minus
+    .filter((x) => x.v > 0);
   const total = used.reduce((s, x) => s + x.v, 0);
   const needs = used.filter((x) => (x.e.need_want ?? 'need') === 'need').reduce((s, x) => s + x.v, 0);
   const wants = total - needs;
-  // A refund can push one side below zero; the bar and % only show what's above it.
-  const splitBase = Math.max(0, needs) + Math.max(0, wants);
-  const share = (v: number) => (splitBase > 0 ? Math.max(0, v) / splitBase : 0);
+  const share = (v: number) => (total > 0 ? Math.max(0, v) / total : 0);
   const bar = (v: number) => `${share(v) * 100}%`;
-  const refunds = counted.filter((e) => Number(e.amount) < 0).length;
   const forLater = counted.filter(spread).reduce((s, e) => s + (hkdOf(e) ?? 0) * (1 - shareIn(e, month)), 0);
   const fromEarlier = used.filter((x) => x.e.budget_month !== month);
 
@@ -94,8 +95,11 @@ export function ExpenseScreen({ tags, buckets, plans, onTagsChanged, quickLog }:
   const statements = accounts
     .map((b) => {
       const rows = (data?.expenses ?? []).filter((e) => e.paid_from === b.id && e.statement_month === month && !e.reimbursable);
-      const sum = rows.reduce((s, e) => s + (inCardCurrency(e, b.currency, rates) ?? 0), 0);
-      return { b, rows, sum, open: rows.filter((e) => !e.settled_on).length };
+      const inCur = (e: Expense) => inCardCurrency(e, b.currency, rates) ?? 0;
+      // Cards: the bill, refunds netted off. Cash and bank: what you spent, with refunds shown beside it.
+      const back = -rows.filter(isRefund).reduce((s, e) => s + inCur(e), 0);
+      const sum = rows.reduce((s, e) => s + inCur(e), 0) + (b.type === 'Card' ? 0 : back);
+      return { b, rows, sum, back, open: rows.filter((e) => !e.settled_on).length };
     })
     .filter((s) => s.rows.length > 0 || s.b.type === 'Card');
 
@@ -169,9 +173,12 @@ export function ExpenseScreen({ tags, buckets, plans, onTagsChanged, quickLog }:
                 <div className="hero-text">
                   <span className="eyebrow">Spent in {monthOnly(month)}</span>
                   <span className="big num">{d.show(total)}</span>
-                  <span className="muted small">{[d.alt(total), `${counted.length - refunds} ${counted.length - refunds === 1 ? 'charge' : 'charges'}`, refunds ? `${refunds} ${refunds === 1 ? 'refund' : 'refunds'}` : null].filter(Boolean).join(' · ')}</span>
+                  <span className="muted small">{[d.alt(total), `${counted.length} ${counted.length === 1 ? 'charge' : 'charges'}`].filter(Boolean).join(' · ')}</span>
                   {Math.round(forLater) > 0 && (
                     <span className="muted small">Paid {d.show(paidTotal)}, of which {d.show(forLater)} is for later</span>
+                  )}
+                  {Math.round(refundTotal) > 0 && (
+                    <span className="refund-line small">+ {d.show(refundTotal)} back from {refundRows.length} {refundRows.length === 1 ? 'refund' : 'refunds'}</span>
                   )}
                   <span className={`status ${spent.length > 0 && toSettle === 0 ? 'good' : ''}`}>
                     {spent.length === 0 ? 'Nothing logged yet' : toSettle === 0 ? 'All settled' : `${toSettle} still on the card`}
@@ -200,7 +207,7 @@ export function ExpenseScreen({ tags, buckets, plans, onTagsChanged, quickLog }:
                 <h2>{monthOnly(month)} statements</h2>
                 {statements.length === 0 && <p className="muted small">No cards yet. Add one in Settings.</p>}
                 <ul className="rows">
-                  {statements.map(({ b, rows, sum, open }) => {
+                  {statements.map(({ b, rows, sum, back, open }) => {
                     const isCard = b.type === 'Card';
                     const due = isCard && b.due_day ? `due ${dayIn(addMonths(month, b.due_day <= (b.statement_day ?? 31) ? 1 : 0), b.due_day)}` : null;
                     return (
@@ -209,7 +216,7 @@ export function ExpenseScreen({ tags, buckets, plans, onTagsChanged, quickLog }:
                           <span className="row-main">
                             <span className="tag">{b.name}</span>
                             <span className="muted small">
-                              {[due ?? (isCard ? null : b.type === 'Bank' ? 'debit' : 'cash'), rows.length === 0 ? 'nothing yet' : isCard ? (open === 0 ? 'all settled' : `${open} open`) : null].filter(Boolean).join(' · ')}
+                              {[due ?? (isCard ? null : b.type === 'Bank' ? 'debit' : 'cash'), rows.length === 0 ? 'nothing yet' : isCard ? (open === 0 ? 'all settled' : `${open} open`) : null, back > 0 ? (isCard ? `after ${money(back, b.currency)} refund` : `${money(back, b.currency)} refunded`) : null].filter(Boolean).join(' · ')}
                             </span>
                           </span>
                           <span className="row-amt">
