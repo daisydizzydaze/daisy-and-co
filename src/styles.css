@@ -558,3 +558,4 @@ input, select, textarea { font-size: 16px; }
 .segmented.kind button[aria-selected='true']:last-child { background: var(--mint); color: var(--ink); }
 .num.credit { color: color-mix(in srgb, #1F7A4D 85%, var(--ink)); }
 .cat-pct { text-align: right; min-width: 3.3em; font-size: 12px; }
+.refund-line { color: color-mix(in srgb, #1F7A4D 85%, var(--ink)); font-weight: 600; }
