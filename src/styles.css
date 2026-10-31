@@ -232,7 +232,7 @@ input:focus-visible, select:focus-visible, button:focus-visible { outline: 3px s
 .row.picked .tag { text-decoration: underline; text-decoration-thickness: 2px; text-decoration-color: var(--pink); }
 .cat-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(60px, 1.2fr) auto auto; gap: 8px 10px; align-items: center; }
 .cat-list li { display: contents; }
-.cat-name { font-size: 15px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cat-name { font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cat-list .meter { margin: 0; max-width: none; }
 .expense-list { padding: 12px 16px; }
 .list-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
@@ -557,11 +557,4 @@ input, select, textarea { font-size: 16px; }
 .segmented.kind { max-width: 260px; }
 .segmented.kind button[aria-selected='true']:last-child { background: var(--mint); color: var(--ink); }
 .num.credit { color: color-mix(in srgb, #1F7A4D 85%, var(--ink)); }
-
-/* By category: name and amount on one line, a slim bar under it, % kept quiet */
-.cat-rows { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 10px; }
-.cat-rows li { display: grid; gap: 5px; }
-.cat-line { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; min-width: 0; }
-.cat-line .cat-name { white-space: normal; }
-.cat-rows .meter { margin: 0; max-width: none; height: 7px; }
-.cat-pct { display: inline-block; min-width: 3.2em; text-align: right; color: var(--muted); font-size: 12px; }
+.cat-pct { text-align: right; min-width: 3.3em; font-size: 12px; }
