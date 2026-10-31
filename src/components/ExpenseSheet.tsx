@@ -39,7 +39,10 @@ export function ExpenseSheet({ row, tags, buckets, plans, defaultDate, defaultPl
   const remembered = accounts.find((b) => b.id === lastPaidWith())?.id;
   const [paidFrom, setPaidFrom] = useState(row?.paid_from ?? remembered ?? accounts[0]?.id ?? '');
   const account = buckets.find((b) => b.id === paidFrom);
-  const [amount, setAmount] = useState(row ? fmtNum(row.amount) : '');
+  const [amount, setAmount] = useState(row ? fmtNum(Math.abs(Number(row.amount))) : '');
+  // A refund or card credit is saved as a minus amount: it lowers the statement and cancels the spending.
+  const [refund, setRefund] = useState(row ? Number(row.amount) < 0 : false);
+  const sign = refund ? -1 : 1;
   const [currency, setCurrencyRaw] = useState(row?.currency ?? account?.currency ?? lastCurrency('expense', 'HKD'));
   const [currencyTouched, setCurrencyTouched] = useState(!!row);
   const setCurrency = (c: string) => { setCurrencyRaw(c); setCurrencyTouched(true); };
@@ -73,7 +76,7 @@ export function ExpenseSheet({ row, tags, buckets, plans, defaultDate, defaultPl
   const [useTo, setUseTo] = useState(ownDates ? row!.use_to! : '');
   const [spentOn, setSpentOn] = useState(row?.spent_on ?? defaultDate ?? todayISO());
   const [vendor, setVendor] = useState(row?.vendor ?? '');
-  const [charged, setCharged] = useState(row?.charged_amount != null ? fmtNum(row.charged_amount) : '');
+  const [charged, setCharged] = useState(row?.charged_amount != null ? fmtNum(Math.abs(Number(row.charged_amount))) : '');
   const [settled, setSettled] = useState(row ? row.settled_on !== null : PAYS_AT_ONCE.includes(account?.type ?? ''));
   const [reimbursable, setReimbursable] = useState(row?.reimbursable ?? false);
   const [note, setNote] = useState(row?.note ?? '');
@@ -110,10 +113,10 @@ export function ExpenseSheet({ row, tags, buckets, plans, defaultDate, defaultPl
         spent_on: spentOn,
         vendor: vendor || null,
         currency,
-        amount: num(amount),
+        amount: sign * Math.abs(num(amount)),
         tag_id: tagId || null,
         paid_from: paidFrom,
-        charged_amount: foreign && charged ? num(charged) : null,
+        charged_amount: foreign && charged ? sign * Math.abs(num(charged)) : null,
         charged_currency: foreign && charged ? account!.currency : null,
         reimbursable,
         settled_on: settled ? row?.settled_on ?? todayISO() : null,
@@ -128,13 +131,18 @@ export function ExpenseSheet({ row, tags, buckets, plans, defaultDate, defaultPl
   };
 
   return (
-    <Sheet wide title={row ? 'Edit expense' : 'Log expense'} onClose={onClose}>
+    <Sheet wide title={row ? (refund ? 'Edit refund' : 'Edit expense') : refund ? 'Log refund' : 'Log expense'} onClose={onClose}>
       <form className="stack" onSubmit={submit}>
         <div className="sheet-cols"><div className="stack col">
-        <label className="field amount">
-          <span>Amount ({currency})</span>
+        <div className="segmented kind" role="radiogroup" aria-label="Spent or refund">
+          <button type="button" role="radio" aria-checked={!refund} aria-selected={!refund} onClick={() => setRefund(false)}>Spent</button>
+          <button type="button" role="radio" aria-checked={refund} aria-selected={refund} onClick={() => setRefund(true)}>Refund</button>
+        </div>
+        <label className={`field amount ${refund ? 'refund' : ''}`}>
+          <span>{refund ? `Refunded (${currency})` : `Amount (${currency})`}</span>
           <input inputMode="decimal" required autoFocus={!row} value={amount} onChange={(e) => { commas(e); setAmount(e.target.value); }} placeholder="0" />
         </label>
+        {refund && <p className="muted small hint-row">Pick the card it came back to and the same category as the original charge (e.g. Bank fees for an annual fee). It lowers that card’s bill.</p>}
         <Fold id="currency" title="Currency" summary={currencyLabel(currency)} {...fold}>
           <CurrencyField value={currency} onChange={(c) => { setCurrency(c); if (compact) setOpenFold(''); }} />
         </Fold>
@@ -161,9 +169,9 @@ export function ExpenseSheet({ row, tags, buckets, plans, defaultDate, defaultPl
         </div>
         </Fold>
 
-        <Fold id="paid" title="Paid with" summary={[account?.name, settled ? 'Settled' : 'Charged'].filter(Boolean).join(' · ')} {...fold}>
+        <Fold id="paid" title={refund ? 'Back to' : 'Paid with'} summary={[account?.name, settled ? 'Settled' : 'Charged'].filter(Boolean).join(' · ')} {...fold}>
         <fieldset className="chips">
-          <legend>Paid with</legend>
+          <legend>{refund ? 'Refunded to' : 'Paid with'}</legend>
           {accounts.map((b) => (
             <label key={b.id} className={`chip ${paidFrom === b.id ? 'on' : ''}`}>
               <input type="radio" name="paid" value={b.id} checked={paidFrom === b.id} onChange={() => pickAccount(b.id)} />

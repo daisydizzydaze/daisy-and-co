@@ -78,10 +78,15 @@ export function ExpenseScreen({ tags, buckets, plans, onTagsChanged, quickLog }:
   const used = (data?.expenses ?? [])
     .filter((e) => !e.reimbursable)
     .map((e) => ({ e, v: (hkdOf(e) ?? 0) * shareIn(e, month) }))
-    .filter((x) => x.v > 0);
+    .filter((x) => x.v !== 0);  // refunds count as minus
   const total = used.reduce((s, x) => s + x.v, 0);
   const needs = used.filter((x) => (x.e.need_want ?? 'need') === 'need').reduce((s, x) => s + x.v, 0);
   const wants = total - needs;
+  // A refund can push one side below zero; the bar and % only show what's above it.
+  const splitBase = Math.max(0, needs) + Math.max(0, wants);
+  const share = (v: number) => (splitBase > 0 ? Math.max(0, v) / splitBase : 0);
+  const bar = (v: number) => `${share(v) * 100}%`;
+  const refunds = counted.filter((e) => Number(e.amount) < 0).length;
   const forLater = counted.filter(spread).reduce((s, e) => s + (hkdOf(e) ?? 0) * (1 - shareIn(e, month)), 0);
   const fromEarlier = used.filter((x) => x.e.budget_month !== month);
 
@@ -164,7 +169,7 @@ export function ExpenseScreen({ tags, buckets, plans, onTagsChanged, quickLog }:
                 <div className="hero-text">
                   <span className="eyebrow">Spent in {monthOnly(month)}</span>
                   <span className="big num">{d.show(total)}</span>
-                  <span className="muted small">{[d.alt(total), `${counted.length} ${counted.length === 1 ? 'charge' : 'charges'}`].filter(Boolean).join(' · ')}</span>
+                  <span className="muted small">{[d.alt(total), `${counted.length - refunds} ${counted.length - refunds === 1 ? 'charge' : 'charges'}`, refunds ? `${refunds} ${refunds === 1 ? 'refund' : 'refunds'}` : null].filter(Boolean).join(' · ')}</span>
                   {Math.round(forLater) > 0 && (
                     <span className="muted small">Paid {d.show(paidTotal)}, of which {d.show(forLater)} is for later</span>
                   )}
@@ -176,13 +181,13 @@ export function ExpenseScreen({ tags, buckets, plans, onTagsChanged, quickLog }:
                 {total > 0 && (
                   <div className="nw-split">
                     <div className="split-bar" aria-hidden="true">
-                      <span className="seg need" style={{ width: `${(needs / total) * 100}%` }} />
-                      <span className="seg want" style={{ width: `${(wants / total) * 100}%` }} />
+                      <span className="seg need" style={{ width: bar(needs) }} />
+                      <span className="seg want" style={{ width: bar(wants) }} />
                     </div>
                     <div className="nw-legend" role="group" aria-label="Show needs or wants">
                       {(['need', 'want'] as NeedWant[]).map((k) => (
                         <button key={k} aria-pressed={nw === k} onClick={() => setNw(nw === k ? '' : k)}>
-                          <span className="nw-label"><i className={`dot ${k}`} aria-hidden="true" />{k === 'need' ? 'Needs' : 'Wants'} <span className="muted">{Math.round(((k === 'need' ? needs : wants) / total) * 100)}%</span></span>
+                          <span className="nw-label"><i className={`dot ${k}`} aria-hidden="true" />{k === 'need' ? 'Needs' : 'Wants'} <span className="muted">{Math.round(share(k === 'need' ? needs : wants) * 100)}%</span></span>
                           <strong className="num">{d.show(k === 'need' ? needs : wants)}</strong>
                         </button>
                       ))}
@@ -258,14 +263,15 @@ export function ExpenseScreen({ tags, buckets, plans, onTagsChanged, quickLog }:
                 <details className="card later cats" open={wide}>
                   <summary>
                     <h2>By category</h2>
-                    <span className="muted small">{tagById.get(byCategory[0][0])?.name ?? 'Uncategorised'} {d.show(byCategory[0][1])}{byCategory.length > 1 ? ` + ${byCategory.length - 1} more` : ''}</span>
+                    <span className="muted small">{tagById.get(byCategory[0][0])?.name ?? 'Uncategorised'} {d.show(byCategory[0][1])}{total > 0 ? ` (${Math.round((byCategory[0][1] / total) * 100)}%)` : ''}{byCategory.length > 1 ? ` + ${byCategory.length - 1} more` : ''}</span>
                   </summary>
                   <ul className="cat-list">
                     {byCategory.map(([id, v]) => (
                       <li key={id}>
                         <span className="cat-name">{tagById.get(id)?.name ?? 'Uncategorised'}</span>
-                        <span className="meter"><span className="grow" style={{ width: `${(v / byCategory[0][1]) * 100}%` }} /></span>
+                        <span className="meter"><span className="grow" style={{ width: `${byCategory[0][1] > 0 ? (Math.max(0, v) / byCategory[0][1]) * 100 : 0}%` }} /></span>
                         <span className="num small">{d.show(v)}</span>
+                        <span className="num small muted cat-pct">{total > 0 ? (v > 0 && v / total < 0.005 ? '<1%' : `${Math.round((v / total) * 100)}%`) : ''}</span>
                       </li>
                     ))}
                   </ul>
@@ -366,7 +372,7 @@ function ExpenseRow({ e, tag, account, plan, hkd, month, onEdit }: { e: Expense;
   const cat = tag?.name ?? 'Uncategorised';
   const nextStatement = e.statement_month && e.statement_month !== month;
   const later = spread(e) && shareIn(e, month) < 1 ? `for ${rangeLabel(e.use_from!, e.use_to!)}` : null;
-  const sub = [e.vendor ? cat : null, plan?.name, account?.name, nextStatement ? `${shortMonth(e.statement_month!)} bill` : null, later, e.reimbursable ? 'paid back' : null].filter(Boolean).join(' · ');
+  const sub = [e.vendor ? cat : null, plan?.name, account?.name, nextStatement ? `${shortMonth(e.statement_month!)} bill` : null, later, e.reimbursable ? 'paid back' : null, Number(e.amount) < 0 ? 'refund' : null].filter(Boolean).join(' · ');
   const amt = Number(e.amount);
   const status = e.settled_on ? 'settled' : 'charged';
   return (
@@ -377,7 +383,7 @@ function ExpenseRow({ e, tag, account, plan, hkd, month, onEdit }: { e: Expense;
           {sub && <span className="muted small">{sub}</span>}
         </span>
         <span className="row-amt">
-          <span className={`num ${e.reimbursable ? 'muted' : ''}`}>{money(amt, e.currency, amt % 1 ? 2 : 0)}</span>
+          <span className={`num ${e.reimbursable ? 'muted' : ''} ${amt < 0 ? 'credit' : ''}`}>{money(amt, e.currency, amt % 1 ? 2 : 0)}</span>
           <span className="muted small num">
             {e.currency !== d.cur && hkd !== null ? d.show(hkd) : ''}
             <i className={`sdot ${status}`} title={status === 'settled' ? 'Settled' : 'Charged'} />
