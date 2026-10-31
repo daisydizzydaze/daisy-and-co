@@ -265,16 +265,32 @@ export function ExpenseScreen({ tags, buckets, plans, onTagsChanged, quickLog }:
                     <h2>By category</h2>
                     <span className="muted small">{tagById.get(byCategory[0][0])?.name ?? 'Uncategorised'} {d.show(byCategory[0][1])}{total > 0 ? ` (${Math.round((byCategory[0][1] / total) * 100)}%)` : ''}{byCategory.length > 1 ? ` + ${byCategory.length - 1} more` : ''}</span>
                   </summary>
-                  <ul className="cat-list">
-                    {byCategory.map(([id, v]) => (
-                      <li key={id}>
-                        <span className="cat-name">{tagById.get(id)?.name ?? 'Uncategorised'}</span>
-                        <span className="meter"><span className="grow" style={{ width: `${byCategory[0][1] > 0 ? (Math.max(0, v) / byCategory[0][1]) * 100 : 0}%` }} /></span>
-                        <span className="num small">{d.show(v)}</span>
-                        <span className="num small muted cat-pct">{total > 0 ? (v > 0 && v / total < 0.005 ? '<1%' : `${Math.round((v / total) * 100)}%`) : ''}</span>
-                      </li>
-                    ))}
-                  </ul>
+                  {(() => {
+                    const pos = byCategory.filter(([, v]) => v > 0);
+                    const sum = pos.reduce((a, [, v]) => a + v, 0);
+                    const pct = (v: number) => (v > 0 && v / total < 0.005 ? '<1' : String(Math.round((v / total) * 100)));
+                    return (
+                      <>
+                        {sum > 0 && (
+                          <div className="cat-ribbon" aria-hidden="true">
+                            {pos.map(([id, v], i) => <span key={id} className={`grow cc${i % 9}`} style={{ width: `${(v / sum) * 100}%` }} />)}
+                          </div>
+                        )}
+                        <ul className="cat-rows">
+                          {byCategory.map(([id, v], i) => (
+                            <li key={id}>
+                              <i className={`cat-dot cc${v > 0 ? pos.findIndex(([p]) => p === id) % 9 : 'x'}`} aria-hidden="true" />
+                              <span className="cat-main">
+                                <span className="cat-name">{tagById.get(id)?.name ?? 'Uncategorised'}</span>
+                                <span className="muted small num">{d.show(v)}</span>
+                              </span>
+                              <span className="cat-pct num">{pct(v)}<small>%</small></span>
+                            </li>
+                          ))}
+                        </ul>
+                      </>
+                    );
+                  })()}
                 </details>
               )}
             </aside>

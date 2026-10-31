@@ -232,7 +232,7 @@ input:focus-visible, select:focus-visible, button:focus-visible { outline: 3px s
 .row.picked .tag { text-decoration: underline; text-decoration-thickness: 2px; text-decoration-color: var(--pink); }
 .cat-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(60px, 1.2fr) auto auto; gap: 8px 10px; align-items: center; }
 .cat-list li { display: contents; }
-.cat-name { font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cat-name { font-size: 15px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cat-list .meter { margin: 0; max-width: none; }
 .expense-list { padding: 12px 16px; }
 .list-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
@@ -557,4 +557,19 @@ input, select, textarea { font-size: 16px; }
 .segmented.kind { max-width: 260px; }
 .segmented.kind button[aria-selected='true']:last-child { background: var(--mint); color: var(--ink); }
 .num.credit { color: color-mix(in srgb, #1F7A4D 85%, var(--ink)); }
-.cat-pct { text-align: right; min-width: 2.6em; }
+
+/* By category: one ribbon showing the mix, then a row per category */
+.cat-ribbon { display: flex; height: 18px; margin-top: 12px; border: 1.5px solid var(--ink); border-radius: 9px; overflow: hidden; background: var(--paper); }
+.cat-ribbon > span { border-right: 1.5px solid var(--ink); min-width: 3px; }
+.cat-ribbon > span:last-child { border-right: 0; }
+.cat-rows { list-style: none; margin: 10px 0 0; padding: 0; }
+.cat-rows li { display: grid; grid-template-columns: 12px minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 7px 0; border-top: 1px dashed var(--line); }
+.cat-rows li:first-child { border-top: 0; }
+.cat-dot { width: 12px; height: 12px; border-radius: 50%; border: 1.5px solid var(--ink); box-sizing: border-box; }
+.cat-main { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; min-width: 0; }
+.cat-pct { font-family: var(--display); font-weight: 700; font-size: 17px; min-width: 2.7em; text-align: right; }
+.cat-pct small { font-size: 13px; font-weight: 500; color: var(--muted); margin-left: 1px; }
+.cc0 { background: var(--pink); } .cc1 { background: var(--yellow); } .cc2 { background: var(--mint); }
+.cc3 { background: var(--sky); } .cc4 { background: var(--peach); } .cc5 { background: var(--lilac); }
+.cc6 { background: var(--teal); } .cc7 { background: var(--lime); } .cc8 { background: var(--sand); }
+.ccx { background: var(--paper); }
