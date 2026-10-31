@@ -558,18 +558,10 @@ input, select, textarea { font-size: 16px; }
 .segmented.kind button[aria-selected='true']:last-child { background: var(--mint); color: var(--ink); }
 .num.credit { color: color-mix(in srgb, #1F7A4D 85%, var(--ink)); }
 
-/* By category: one ribbon showing the mix, then a row per category */
-.cat-ribbon { display: flex; height: 18px; margin-top: 12px; border: 1.5px solid var(--ink); border-radius: 9px; overflow: hidden; background: var(--paper); }
-.cat-ribbon > span { border-right: 1.5px solid var(--ink); min-width: 3px; }
-.cat-ribbon > span:last-child { border-right: 0; }
-.cat-rows { list-style: none; margin: 10px 0 0; padding: 0; }
-.cat-rows li { display: grid; grid-template-columns: 12px minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 7px 0; border-top: 1px dashed var(--line); }
-.cat-rows li:first-child { border-top: 0; }
-.cat-dot { width: 12px; height: 12px; border-radius: 50%; border: 1.5px solid var(--ink); box-sizing: border-box; }
-.cat-main { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; min-width: 0; }
-.cat-pct { font-family: var(--display); font-weight: 700; font-size: 17px; min-width: 2.7em; text-align: right; }
-.cat-pct small { font-size: 13px; font-weight: 500; color: var(--muted); margin-left: 1px; }
-.cc0 { background: var(--pink); } .cc1 { background: var(--yellow); } .cc2 { background: var(--mint); }
-.cc3 { background: var(--sky); } .cc4 { background: var(--peach); } .cc5 { background: var(--lilac); }
-.cc6 { background: var(--teal); } .cc7 { background: var(--lime); } .cc8 { background: var(--sand); }
-.ccx { background: var(--paper); }
+/* By category: name and amount on one line, a slim bar under it, % kept quiet */
+.cat-rows { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 10px; }
+.cat-rows li { display: grid; gap: 5px; }
+.cat-line { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; min-width: 0; }
+.cat-line .cat-name { white-space: normal; }
+.cat-rows .meter { margin: 0; max-width: none; height: 7px; }
+.cat-pct { display: inline-block; min-width: 3.2em; text-align: right; color: var(--muted); font-size: 12px; }

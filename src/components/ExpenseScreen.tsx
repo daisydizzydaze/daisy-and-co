@@ -266,29 +266,20 @@ export function ExpenseScreen({ tags, buckets, plans, onTagsChanged, quickLog }:
                     <span className="muted small">{tagById.get(byCategory[0][0])?.name ?? 'Uncategorised'} {d.show(byCategory[0][1])}{total > 0 ? ` (${Math.round((byCategory[0][1] / total) * 100)}%)` : ''}{byCategory.length > 1 ? ` + ${byCategory.length - 1} more` : ''}</span>
                   </summary>
                   {(() => {
-                    const pos = byCategory.filter(([, v]) => v > 0);
-                    const sum = pos.reduce((a, [, v]) => a + v, 0);
-                    const pct = (v: number) => (v > 0 && v / total < 0.005 ? '<1' : String(Math.round((v / total) * 100)));
+                    const top = byCategory[0][1];
+                    const pct = (v: number) => (v > 0 && v / total < 0.005 ? '<1%' : `${Math.round((v / total) * 100)}%`);
                     return (
-                      <>
-                        {sum > 0 && (
-                          <div className="cat-ribbon" aria-hidden="true">
-                            {pos.map(([id, v], i) => <span key={id} className={`grow cc${i % 9}`} style={{ width: `${(v / sum) * 100}%` }} />)}
-                          </div>
-                        )}
-                        <ul className="cat-rows">
-                          {byCategory.map(([id, v], i) => (
-                            <li key={id}>
-                              <i className={`cat-dot cc${v > 0 ? pos.findIndex(([p]) => p === id) % 9 : 'x'}`} aria-hidden="true" />
-                              <span className="cat-main">
-                                <span className="cat-name">{tagById.get(id)?.name ?? 'Uncategorised'}</span>
-                                <span className="muted small num">{d.show(v)}</span>
-                              </span>
-                              <span className="cat-pct num">{pct(v)}<small>%</small></span>
-                            </li>
-                          ))}
-                        </ul>
-                      </>
+                      <ul className="cat-rows">
+                        {byCategory.map(([id, v]) => (
+                          <li key={id}>
+                            <span className="cat-line">
+                              <span className="cat-name">{tagById.get(id)?.name ?? 'Uncategorised'}</span>
+                              <span className="num small">{d.show(v)}<span className="cat-pct">{pct(v)}</span></span>
+                            </span>
+                            <span className="meter"><span className="grow" style={{ width: `${top > 0 ? (Math.max(0, v) / top) * 100 : 0}%` }} /></span>
+                          </li>
+                        ))}
+                      </ul>
                     );
                   })()}
                 </details>
