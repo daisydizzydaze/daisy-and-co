@@ -191,6 +191,7 @@ export interface MonthTotals {
   debts: number;
   net: number;
   liquid: number; // liquid assets less card balances: what counts toward FIRE
+  bySection: Record<string, number>; // assets by Liquid / Locked until age / Illiquid
 }
 
 export function totalsByMonth(buckets: Bucket[], d: NetWorthData): MonthTotals[] {
@@ -198,13 +199,14 @@ export function totalsByMonth(buckets: Bucket[], d: NetWorthData): MonthTotals[]
   const months = [...new Set(d.balances.map((x) => x.month))].sort();
   return months.map((m) => {
     const rates = ratesAt(d.fx, m);
-    const t: MonthTotals = { month: m, closedOn: '', assets: 0, debts: 0, net: 0, liquid: 0 };
+    const t: MonthTotals = { month: m, closedOn: '', assets: 0, debts: 0, net: 0, liquid: 0, bySection: { Liquid: 0, 'Locked until age': 0, Illiquid: 0 } };
     for (const x of d.balances.filter((r) => r.month === m)) {
       const b = byId.get(x.bucket_id);
       if (!b) continue;
       t.closedOn = t.closedOn > x.closed_on ? t.closedOn : x.closed_on;
       const hkd = convert(x.value, b.currency, 'HKD', rates) ?? 0;
       if (isDebt(b)) t.debts += hkd; else t.assets += hkd;
+      if (!isDebt(b)) { const sec = b.liquidity in t.bySection ? b.liquidity : 'Liquid'; t.bySection[sec] += hkd; }
       if (kindOf(b) === 'card') t.liquid -= hkd;
       else if (!isDebt(b) && b.liquidity === 'Liquid') t.liquid += hkd;
     }

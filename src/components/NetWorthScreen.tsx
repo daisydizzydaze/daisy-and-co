@@ -12,7 +12,7 @@ import { Bud, type Mood } from './Bud';
 import { Sheet } from './Sheet';
 
 const SECTIONS = ['Liquid', 'Locked until age', 'Illiquid', 'Debts'] as const;
-const SECTION_TITLE: Record<string, string> = { Liquid: 'Liquid', 'Locked until age': 'Locked until an age', Illiquid: 'Illiquid', Debts: 'Debts' };
+const SECTION_TITLE: Record<string, string> = { Liquid: 'Liquid', 'Locked until age': 'Locked until age', Illiquid: 'Illiquid', Debts: 'Debts' };
 const sectionOf = (b: Bucket) => (isDebt(b) ? 'Debts' : SECTIONS.includes(b.liquidity as never) ? b.liquidity : 'Liquid');
 const dayMonth = (iso: string) => `${Number(iso.slice(8))} ${shortMonth(iso.slice(0, 7) + '-01')}`;
 const toHkd = (v: number, cur: string, rates: Record<string, number>) => (cur === 'HKD' ? v : rates[cur] ? v * rates[cur] : null);
@@ -31,6 +31,16 @@ export function NetWorthScreen({ buckets, tags, onChange }: { buckets: Bucket[];
   const [closing, setClosing] = useState(false);
   const [editFire, setEditFire] = useState(false);
   const [displayCur, setDisplayCur] = useState<DisplayCurrency>(savedDisplay());
+  const [focus, setFocus] = useState<string | null>(null);
+  const [openSecs, setOpenSecs] = useState<Set<string>>(() => {
+    try { return new Set(JSON.parse(localStorage.getItem('nw-open') ?? '[]')); } catch { return new Set(); }
+  });
+  const openSection = (s: string, on: boolean) => setOpenSecs((cur) => {
+    const next = new Set(cur);
+    if (on) next.add(s); else next.delete(s);
+    try { localStorage.setItem('nw-open', JSON.stringify([...next])); } catch { /* private mode */ }
+    return next;
+  });
 
   const reload = useCallback(async () => {
     try {
@@ -131,9 +141,9 @@ export function NetWorthScreen({ buckets, tags, onChange }: { buckets: Bucket[];
                 </button>
               </section>
 
-              {last && prev && <ChangeCard buckets={buckets} data={data} from={prev.month} to={last.month} total={last.net - prev.net} d={d} />}
+              {last && prev && <div className="later"><ChangeCard buckets={buckets} data={data} from={prev.month} to={last.month} total={last.net - prev.net} d={d} /></div>}
               {history.length > 0 && (
-                <section className="card stack">
+                <section className="card stack later">
                   <h2 className="card-h">Past closes</h2>
                   <ul className="rows bridge">
                     {[...history].reverse().map((h) => (
@@ -145,24 +155,34 @@ export function NetWorthScreen({ buckets, tags, onChange }: { buckets: Bucket[];
                   </ul>
                 </section>
               )}
-              {history.length >= 2 && <Chart points={history.map((h) => ({ month: h.month, value: h.net }))} d={d} />}
+              <div className="later">{history.length >= 3 ? <StackedChart history={history} d={d} /> : history.length >= 2 && <Chart points={history.map((h) => ({ month: h.month, value: h.net }))} d={d} />}</div>
             </aside>
 
             <section className="card statement" aria-label="Balance sheet">
+              <MixBar accounts={accounts} hkdOf={hkdOf} assets={assets} debts={debts} d={d} focus={focus} onFocus={(s) => { setFocus(s); if (s) openSection(s, true); }} />
               {SECTIONS.map((s) => {
                 const items = accounts.filter((a) => sectionOf(a.b) === s);
                 if (!items.length) return null;
                 const total = items.reduce((t, a) => t + (hkdOf(a) ?? 0), 0);
+                const isOpen = openSecs.has(s);
                 return (
-                  <div key={s} className="block">
-                    <div className="block-head">
-                      <h2 className={`group-title l-${s.split(' ')[0]}`}>{SECTION_TITLE[s]}</h2>
-                      <span className="num strong">{s === 'Debts' && total > 0 ? '−' : ''}{d.show(total)}</span>
-                    </div>
-                    {s === 'Liquid' && <p className="muted small nw-hint">Counts toward your freedom number</p>}
-                    <ul className="rows">
-                      {items.map((a) => <AccountRow key={a.b.id} a={a} hkd={hkdOf(a)} d={d} />)}
-                    </ul>
+                  <div key={s} className={`block nw-sec ${isOpen ? 'open' : ''}`}>
+                    <button className="nw-sec-head" aria-expanded={isOpen} onClick={() => openSection(s, !isOpen)}>
+                      <span className={`group-title l-${s.split(' ')[0]}`}>{SECTION_TITLE[s]} <span className="muted small">{items.length}</span></span>
+                      <span className="nw-sec-amt">
+                        <span className="num strong">{s === 'Debts' && total > 0 ? '−' : ''}{d.show(total)}</span>
+                        {s !== 'Debts' && assets > 0 && <span className="muted small num">{Math.round((total / assets) * 100)}% of assets</span>}
+                      </span>
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
+                    </button>
+                    {isOpen && (
+                      <>
+                        {s === 'Liquid' && <p className="muted small nw-hint">Counts toward your freedom number</p>}
+                        <ul className="rows">
+                          {items.map((a) => <AccountRow key={a.b.id} a={a} hkd={hkdOf(a)} d={d} />)}
+                        </ul>
+                      </>
+                    )}
                   </div>
                 );
               })}
@@ -402,5 +422,96 @@ function CloseSheet({ buckets, tags, data, onClose, onSaved }: { buckets: Bucket
         <div className="actions"><button type="button" className="btn ghost" onClick={onClose}>Cancel</button><button className="btn primary" disabled={busy}>Save close</button></div>
       </form>
     </Sheet>
+  );
+}
+
+const ASSET_SECTIONS = ['Liquid', 'Locked until age', 'Illiquid'] as const;
+const SHORT: Record<string, string> = { Liquid: 'Liquid', 'Locked until age': 'Locked', Illiquid: 'Illiquid' };
+
+/** Where the money sits: one bar split by section; tap a section to split it by account. */
+function MixBar({ accounts, hkdOf, assets, debts, d, focus, onFocus }: {
+  accounts: AccountView[]; hkdOf: (a: AccountView) => number | null; assets: number; debts: number; d: Display;
+  focus: string | null; onFocus: (s: string | null) => void;
+}) {
+  if (assets <= 0) return null;
+  const secs = ASSET_SECTIONS.map((s) => {
+    const items = accounts.filter((a) => !isDebt(a.b) && sectionOf(a.b) === s && (hkdOf(a) ?? 0) > 0);
+    return { s, items, total: items.reduce((t, a) => t + (hkdOf(a) ?? 0), 0) };
+  }).filter((x) => x.total > 0);
+  const f = secs.find((x) => x.s === focus);
+  const pctOf = (v: number, of: number) => `${Math.round((v / of) * 100)}%`;
+  return (
+    <div className="mix">
+      <div className="mix-head">
+        <h2>Where your money sits</h2>
+        <span className="muted small">{d.show(assets)} assets</span>
+      </div>
+      <div className="mix-bar" role="group" aria-label="Assets by section">
+        {secs.map((x) => (
+          <button key={x.s} className={`mix-seg l-${x.s.split(' ')[0]} ${focus && focus !== x.s ? 'dim' : ''}`} style={{ flexGrow: x.total }}
+            aria-pressed={focus === x.s} onClick={() => onFocus(focus === x.s ? null : x.s)}
+            title={`${SECTION_TITLE[x.s]}: ${d.show(x.total)}`}>
+            {x.total / assets >= 0.12 && <span>{pctOf(x.total, assets)}</span>}
+          </button>
+        ))}
+      </div>
+      <div className="mix-legend">
+        {secs.map((x) => (
+          <button key={x.s} className={`mix-key l-${x.s.split(' ')[0]}`} aria-pressed={focus === x.s} onClick={() => onFocus(focus === x.s ? null : x.s)}>
+            <span className="acct-dot" aria-hidden="true" />{SHORT[x.s]} <span className="num strong">{pctOf(x.total, assets)}</span>
+          </button>
+        ))}
+        {debts > 0 && <span className="mix-debt muted small">Debts −{d.show(debts)} ({(debts / assets * 100).toFixed(1)}%)</span>}
+      </div>
+      {f && (
+        <div className="mix-detail">
+          <div className="mix-bar thin">
+            {[...f.items].sort((a, b) => (hkdOf(b) ?? 0) - (hkdOf(a) ?? 0)).map((a) => (
+              <span key={a.b.id} className={`mix-seg t-${a.b.type}`} style={{ flexGrow: hkdOf(a) ?? 0 }} title={a.b.name} />
+            ))}
+          </div>
+          <ul className="mix-accts">
+            {[...f.items].sort((a, b) => (hkdOf(b) ?? 0) - (hkdOf(a) ?? 0)).map((a) => (
+              <li key={a.b.id} className={`t-${a.b.type}`}>
+                <span className="acct-dot" aria-hidden="true" /><span className="mix-name">{a.b.name}</span>
+                <span className="num">{pctOf(hkdOf(a) ?? 0, f.total)}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** From three closes on: assets stacked by section, net worth as a line on top. */
+function StackedChart({ history, d }: { history: { month: string; net: number; bySection: Record<string, number> }[]; d: Display }) {
+  const W = 320, H = 140, P = 8;
+  const top = Math.max(...history.map((h) => ASSET_SECTIONS.reduce((t, s) => t + h.bySection[s], 0))) || 1;
+  const x = (i: number) => P + (i * (W - 2 * P)) / (history.length - 1);
+  const y = (v: number) => H - P - (v / top) * (H - 2 * P);
+  let base = history.map(() => 0);
+  const areas = ASSET_SECTIONS.map((s) => {
+    const upper = history.map((h, i) => base[i] + h.bySection[s]);
+    const pts = upper.map((v, i) => `${x(i).toFixed(1)} ${y(v).toFixed(1)}`);
+    const back = base.map((v, i) => `${x(i).toFixed(1)} ${y(v).toFixed(1)}`).reverse();
+    base = upper;
+    return { s, d: `M${pts.join(' L')} L${back.join(' L')} Z` };
+  });
+  const net = history.map((h, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)} ${y(h.net).toFixed(1)}`).join(' ');
+  const last = history[history.length - 1];
+  return (
+    <section className="card stack">
+      <div className="block-head"><h2>Month by month</h2><span className="muted small">{d.show(last.net)} now</span></div>
+      <svg className="nw-chart" viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Assets by section and net worth at each close">
+        {areas.map((a) => <path key={a.s} d={a.d} className={`nw-area l-${a.s.split(' ')[0]}`} />)}
+        <path d={net} className="nw-line" pathLength={1} />
+      </svg>
+      <div className="nw-axis muted small"><span>{shortMonth(history[0].month)}</span><span>{shortMonth(last.month)}</span></div>
+      <div className="mix-legend static">
+        {ASSET_SECTIONS.map((s) => <span key={s} className={`mix-key l-${s.split(' ')[0]}`}><span className="acct-dot" aria-hidden="true" />{SHORT[s]}</span>)}
+        <span className="mix-key"><span className="nw-line-key" aria-hidden="true" />Net worth</span>
+      </div>
+    </section>
   );
 }
