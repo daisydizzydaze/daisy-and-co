@@ -568,3 +568,6 @@ input, select, textarea { font-size: 16px; }
 .day-count { color: var(--muted); font-size: 13px; }
 .day.folded { margin-top: 0; }
 .day.folded .day-toggle { padding: 10px 0; }
+.week.folded .week-toggle { padding: 12px 0; }
+.week.open > .week-toggle { color: var(--ink); }
+.week-days { padding-left: 12px; border-left: 2px solid var(--line); margin: 2px 0 8px; }
