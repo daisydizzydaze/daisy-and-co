@@ -10,8 +10,9 @@ import { SetupScreen } from './components/SetupScreen';
 import { ExpenseScreen } from './components/ExpenseScreen';
 import { NetWorthScreen } from './components/NetWorthScreen';
 import { BudgetScreen } from './components/BudgetScreen';
+import { ReportsScreen } from './components/ReportsScreen';
 
-type View = 'allocation' | 'expenses' | 'budget' | 'networth' | 'setup';
+type View = 'allocation' | 'expenses' | 'budget' | 'networth' | 'reports' | 'setup';
 
 export function App() {
   const [session, setSession] = useState<Session | null | undefined>(undefined);
@@ -68,6 +69,8 @@ export function App() {
           <ExpenseScreen tags={tags} buckets={buckets} plans={plans} onTagsChanged={reloadSetup} quickLog={quickLog} />
         ) : view === 'budget' ? (
           <BudgetScreen buckets={buckets} tags={tags} plans={plans} onChange={reloadSetup} />
+        ) : view === 'reports' ? (
+          <ReportsScreen buckets={buckets} tags={tags} plans={plans} />
         ) : view === 'networth' ? (
           <NetWorthScreen buckets={buckets} tags={tags} onChange={reloadSetup} />
         ) : (
@@ -91,9 +94,13 @@ export function App() {
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2" /></svg>
           Net worth
         </button>
-        <button aria-current={view === 'setup' ? 'page' : undefined} onClick={() => setView('setup')}>
+        <button aria-current={view === 'reports' ? 'page' : undefined} onClick={() => setView('reports')}>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M7 3h8l4 4v14H7z" /><path d="M15 3v4h4M10 12h6M10 16h6" /></svg>
+          Reports
+        </button>
+        <button className="tab-gear" aria-label="Settings" aria-current={view === 'setup' ? 'page' : undefined} onClick={() => setView('setup')}>
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><circle cx="12" cy="12" r="3" /><path d="M12 2v3M12 19v3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M2 12h3M19 12h3M4.9 19.1L7 17M17 7l2.1-2.1" /></svg>
-          Settings
+          <span className="tab-label">Settings</span>
         </button>
       </nav>
     </div>
