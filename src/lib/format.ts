@@ -1,3 +1,6 @@
+/** The first fully logged month. Spending before it is incomplete, so averages and reports start here. */
+export const BOOKS_START = '2026-11-01';
+
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
 /** First day of a month as 'YYYY-MM-01'. */
