@@ -10,6 +10,9 @@ import {
 import { type Bucket, type Tag } from '../lib/types';
 import { Bud, type Mood } from './Bud';
 import { Sheet } from './Sheet';
+import { FreedomDate } from './FreedomDate';
+import { liquidPace, loadForecast, type ForecastSettings } from '../lib/forecast';
+import type { Allocation } from '../lib/types';
 
 const SECTIONS = ['Liquid', 'Locked until age', 'Illiquid', 'Debts'] as const;
 const SECTION_TITLE: Record<string, string> = { Liquid: 'Liquid', 'Locked until age': 'Locked until age', Illiquid: 'Illiquid', Debts: 'Debts' };
@@ -30,6 +33,7 @@ export function NetWorthScreen({ buckets, tags, onChange }: { buckets: Bucket[];
   const [error, setError] = useState<string | null>(null);
   const [closing, setClosing] = useState(false);
   const [editFire, setEditFire] = useState(false);
+  const [forecast, setForecast] = useState<{ settings: ForecastSettings; growth: Allocation[] } | null>(null);
   const [displayCur, setDisplayCur] = useState<DisplayCurrency>(savedDisplay());
   const [focus, setFocus] = useState<string | null>(null);
   const [allCloses, setAllCloses] = useState(false);
@@ -46,7 +50,9 @@ export function NetWorthScreen({ buckets, tags, onChange }: { buckets: Bucket[];
   const reload = useCallback(async () => {
     try {
       setError(null);
-      setData(await loadNetWorth());
+      const [nw, fc] = await Promise.all([loadNetWorth(), loadForecast()]);
+      setData(nw);
+      setForecast(fc);
     } catch (e) {
       setError((e as Error).message);
     }
@@ -74,6 +80,7 @@ export function NetWorthScreen({ buckets, tags, onChange }: { buckets: Bucket[];
     else if (!isDebt(a.b) && a.b.liquidity === 'Liquid') liquid += v;
   }
   const net = assets - debts;
+  const pace = useMemo(() => (forecast && data ? liquidPace(forecast.growth, buckets, tags, data.fx) : null), [forecast, data, buckets, tags]);
   const last = history[history.length - 1];
   const prev = history[history.length - 2];
   const hasClose = !!last;
@@ -141,6 +148,10 @@ export function NetWorthScreen({ buckets, tags, onChange }: { buckets: Bucket[];
                   Assumes {money(data.settings.fire_monthly_spend, 'HKD')} a month, all in (rent included), and a {(data.settings.withdrawal_rate * 100).toFixed(1).replace(/\.0$/, '')}% yearly withdrawal. <span className="link">Change</span>
                 </button>
               </section>
+
+              {hasClose && forecast && pace && target !== null && liquid < target && (
+                <FreedomDate liquid={liquid} target={target} pace={pace} settings={forecast.settings} rates={rates} onSaved={reload} />
+              )}
 
               {last && prev && <div className="later"><ChangeCard buckets={buckets} data={data} from={prev.month} to={last.month} total={last.net - prev.net} d={d} /></div>}
               {history.length > 0 && (
