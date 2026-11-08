@@ -16,7 +16,7 @@ export function App() {
   const [session, setSession] = useState<Session | null | undefined>(undefined);
   // A quick-log link (…/daisy-and-co/?log, e.g. from an iPhone Shortcut) opens straight to a new expense.
   const [quickLog] = useState(() => /[?&#]log\b/.test(window.location.search + window.location.hash));
-  const [view, setView] = useState<View>(quickLog ? 'expenses' : 'allocation');
+  const [view, setView] = useState<View>('expenses'); // Expenses is the most used screen, so the app opens on it
   const [month, setMonth] = useState(defaultBudgetMonth());
   const [tags, setTags] = useState<Tag[]>([]);
   const [buckets, setBuckets] = useState<Bucket[]>([]);
