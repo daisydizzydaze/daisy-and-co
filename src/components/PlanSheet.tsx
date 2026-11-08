@@ -20,7 +20,7 @@ export function planTotals(planned: Expense[], hkdOf: (e: Expense) => number | n
 
 export function PlanSheet({ plan, expenses, tags, hkdOf, onClose, onSaved, onLog, onEdit }: {
   plan?: Plan; expenses: Expense[]; tags: Tag[]; hkdOf: (e: Expense) => number | null;
-  onClose: () => void; onSaved: () => void; onLog: () => void; onEdit: (e: Expense) => void;
+  onClose: () => void; onSaved: () => void; onLog?: () => void; onEdit?: (e: Expense) => void;
 }) {
   const d = useDisplay();
   const [name, setName] = useState(plan?.name ?? '');
@@ -64,7 +64,7 @@ export function PlanSheet({ plan, expenses, tags, hkdOf, onClose, onSaved, onLog
               <div className="big num">{d.show(total)}</div>
               <span className="muted small">{[`${rows.length} ${rows.length === 1 ? 'cost' : 'costs'}`, open ? `${open} still on a card` : null].filter(Boolean).join(' · ')}</span>
             </div>
-            <button type="button" className="btn primary small-btn" onClick={onLog}>+ Log a cost</button>
+            {onLog && <button type="button" className="btn primary small-btn" onClick={onLog}>+ Log a cost</button>}
           </div>
           {rows.length > 0 && (
             <ul className="rows">
@@ -72,7 +72,7 @@ export function PlanSheet({ plan, expenses, tags, hkdOf, onClose, onSaved, onLog
                 const amt = Number(e.amount);
                 return (
                   <li key={e.id}>
-                    <button type="button" className="row xrow" onClick={() => onEdit(e)}>
+                    <button type="button" className="row xrow" onClick={() => onEdit?.(e)} disabled={!onEdit}>
                       <span className="row-main">
                         <span className="tag">{e.vendor || tagName.get(e.tag_id ?? '') || 'Uncategorised'}</span>
                         <span className="muted small">{[e.vendor ? tagName.get(e.tag_id ?? '') : null, `paid ${Number(e.spent_on.slice(8))} ${shortMonth(e.spent_on)} ${e.spent_on.slice(0, 4)}`].filter(Boolean).join(' · ')}</span>
@@ -111,8 +111,8 @@ export function PlanSheet({ plan, expenses, tags, hkdOf, onClose, onSaved, onLog
           </div>
         </div>
         <label className="field">
-          <span>Budget <em className="muted">(optional)</em></span>
-          <input inputMode="decimal" value={budget} onChange={(e) => { commas(e); setBudget(e.target.value); }} placeholder="No budget" />
+          <span>Estimate <em className="muted">(optional, a rough guess is fine)</em></span>
+          <input inputMode="decimal" value={budget} onChange={(e) => { commas(e); setBudget(e.target.value); }} placeholder="No estimate yet" />
         </label>
         {budget && <CurrencyField value={budgetCur} onChange={setBudgetCur} />}
         <label className="field">
