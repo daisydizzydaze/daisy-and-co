@@ -3,7 +3,7 @@
 import { supabase } from './supabase';
 import { inCardCurrency, ratesFrom } from './fx';
 import { loanStatus } from './loan';
-import { thisMonth, todayISO } from './format';
+import { addMonths, thisMonth, todayISO } from './format';
 import type { Allocation, Bucket, Expense, FxRate, Income, Tag } from './types';
 
 export interface Balance {
@@ -32,6 +32,12 @@ export interface NetWorthData {
   missingTable: boolean; // migration 009 not run yet
 }
 
+/** Which month a close made today belongs to. Like pay, from the 20th it is this month's;
+ *  before the 20th it is a late close for last month (8 Nov counts as October). */
+export function closeMonth(today = new Date()): string {
+  return today.getDate() >= 20 ? thisMonth(today) : addMonths(thisMonth(today), -1);
+}
+
 export type Kind = 'card' | 'loan' | 'cash' | 'invest' | 'property';
 
 export function kindOf(b: Bucket): Kind {
@@ -54,7 +60,7 @@ export async function loadNetWorth(): Promise<NetWorthData> {
   const missingTable = !!balances.error;
   const rows = ((balances.data as Balance[]) ?? []).map((b) => ({ ...b, value: Number(b.value), money_in: Number(b.money_in) }));
   // Flows are needed from the close before this month's (a close can be redone in the same month).
-  const now = thisMonth();
+  const now = closeMonth();
   const base = rows.find((r) => r.month < now) ?? rows[rows.length - 1];
   const since = base?.closed_on ?? '1900-01-01';
   const [income, allocations, spent, unsettled] = await Promise.all([

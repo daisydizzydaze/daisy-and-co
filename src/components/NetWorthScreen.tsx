@@ -4,7 +4,7 @@ import { money, monthName, monthOnly, pct, shortMonth, thisMonth, todayISO } fro
 import { useMonthFx } from '../lib/useFx';
 import { commas, fmtNum } from '../lib/numInput';
 import {
-  accountsToday, bridge, fireTarget, flowsSince, hasGain, isDebt, kindOf, loadNetWorth, ratesAt, saveClose, saveFire, totalsByMonth,
+  accountsToday, bridge, closeMonth, fireTarget, flowsSince, hasGain, isDebt, kindOf, loadNetWorth, ratesAt, saveClose, saveFire, totalsByMonth,
   computedValue, type AccountView, type Balance, type FireSettings, type NetWorthData,
 } from '../lib/networth';
 import { type Bucket, type Tag } from '../lib/types';
@@ -98,7 +98,7 @@ export function NetWorthScreen({ buckets, tags, onChange }: { buckets: Bucket[];
                     {hasClose ? `Estimate for today · last closed ${dayMonth(last.closedOn)}` : 'Close your first month to start tracking'}
                   </span>
                   <button className="btn primary nw-close-btn" onClick={() => setClosing(true)}>
-                    {last?.month === now ? `Redo ${monthOnly(now)} close` : `Close ${monthOnly(now)}`}
+                    {last?.month === closeMonth() ? `Redo ${monthOnly(closeMonth())} close` : `Close ${monthOnly(closeMonth())}`}
                   </button>
                 </div>
                 <Bud mood={mood} size={88} coin={mood === 'cheer'} />
@@ -270,7 +270,7 @@ function FireSheet({ s, onClose, onSaved }: { s: FireSettings; onClose: () => vo
 
 /** Once a month: type the values that move with markets; the rest is worked out. */
 function CloseSheet({ buckets, tags, data, onClose, onSaved }: { buckets: Bucket[]; tags: Tag[]; data: NetWorthData; onClose: () => void; onSaved: () => void }) {
-  const month = thisMonth();
+  const month = closeMonth();
   const today = todayISO();
   const rates = ratesAt(data.fx, month);
   const redo = data.balances.some((x) => x.month === month);
