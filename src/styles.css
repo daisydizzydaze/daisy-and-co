@@ -612,3 +612,7 @@ input, select, textarea { font-size: 16px; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .nw-big { font-size: 36px; overflow-wrap: anywhere; }
 @media (min-width: 960px) { .nw-big { font-size: 40px; } }
+.close-name { display: flex; flex-direction: column; gap: 2px; white-space: normal; }
+.close-title { display: inline-flex; align-items: center; gap: 8px; }
+.card-h { font-size: 17px; }
+.close-name { align-items: flex-start; text-align: left; }
