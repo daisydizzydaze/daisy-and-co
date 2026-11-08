@@ -559,3 +559,15 @@ input, select, textarea { font-size: 16px; }
 .num.credit { color: color-mix(in srgb, #1F7A4D 85%, var(--ink)); }
 .cat-pct { text-align: right; min-width: 3.3em; font-size: 12px; }
 .refund-line { color: color-mix(in srgb, #1F7A4D 85%, var(--ink)); font-weight: 600; }
+
+/* Day groups: past days fold to one line with their total */
+.day-toggle { display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 10px; background: none; border: 0; border-bottom: 1px solid var(--line); padding: 10px 0 6px; cursor: pointer; text-align: left; }
+.day.open .day-toggle { color: var(--ink); }
+.day-sum { display: inline-flex; align-items: center; gap: 10px; text-transform: none; letter-spacing: 0; font-size: 14px; color: var(--ink); }
+.day-sum .num { font-weight: 600; }
+.day-count { color: var(--muted); font-size: 13px; }
+.day.folded { margin-top: 0; }
+.day.folded .day-toggle { padding: 10px 0; }
+.week.folded .week-toggle { padding: 12px 0; }
+.week.open > .week-toggle { color: var(--ink); }
+.week-days { padding-left: 12px; border-left: 2px solid var(--line); margin: 2px 0 8px; }

@@ -38,6 +38,9 @@ export function ExpenseScreen({ tags, buckets, plans, onTagsChanged, quickLog }:
   const [nw, setNw] = useState<NeedWant | ''>('');
   const [filter, setFilter] = useState<Filter>('all');
   const [account, setAccount] = useState<string>('');
+  // Past days fold into one line with their total; today stays open. Tap a day to open or close it.
+  const [flipped, setFlipped] = useState<Set<string>>(new Set());
+  const flip = (day: string) => setFlipped((f) => { const n = new Set(f); if (n.has(day)) n.delete(day); else n.add(day); return n; });
   const [displayCur, setDisplayCur] = useState<DisplayCurrency>(savedDisplay());
 
   const reload = useCallback(async () => {
@@ -119,6 +122,33 @@ export function ExpenseScreen({ tags, buckets, plans, onTagsChanged, quickLog }:
   const totals = planTotals(data?.planned ?? [], hkdOf);
   const livePlans = plans.filter((p) => !p.done);
   const days = groupByDay(shown);
+  const weeks = groupByWeek(days, month);
+
+  const renderDay = ([day, rows]: [string, Expense[]]) => {
+                const today = day === todayISO();
+                const open = today !== flipped.has(day);
+                const spend = rows.filter((e) => !e.reimbursable && Number(e.amount) > 0).reduce((s, e) => s + (hkdOf(e) ?? 0), 0);
+                const label = today ? `Today · ${Number(day.slice(8))} ${shortMonth(day)}` : `${Number(day.slice(8))} ${shortMonth(day)}`;
+                return (
+                  <div key={day} className={`day ${open ? 'open' : 'folded'}`}>
+                    <button type="button" className="day-head day-toggle" aria-expanded={open} onClick={() => flip(day)}>
+                      <span>{label}</span>
+                      <span className="day-sum">
+                        {!open && <span className="day-count">{rows.length} {rows.length === 1 ? 'item' : 'items'}</span>}
+                        <span className="num">{d.show(spend)}</span>
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" aria-hidden="true"><path d={open ? 'M5 15l7-7 7 7' : 'M9 5l7 7-7 7'} /></svg>
+                      </span>
+                    </button>
+                    {open && (
+                      <ul className="rows">
+                        {rows.map((e) => (
+                          <ExpenseRow key={e.id} e={e} tag={tagById.get(e.tag_id ?? '')} account={bucketById.get(e.paid_from)} plan={planById.get(e.plan_id ?? '')} hkd={hkdOf(e)} month={month} onEdit={() => setEditing({ row: e })} />
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                );
+  };
 
   async function settle(b: Bucket, settled: boolean) {
     try {
@@ -311,16 +341,26 @@ export function ExpenseScreen({ tags, buckets, plans, onTagsChanged, quickLog }:
               {days.length === 0 && (
                 <p className="muted center empty">{spent.length === 0 ? `Nothing logged for ${monthOnly(month)} yet.` : 'Nothing matches this filter.'}</p>
               )}
-              {days.map(([day, rows]) => (
-                <div key={day} className="day">
-                  <h3 className="day-head">{Number(day.slice(8))} {shortMonth(day)}</h3>
-                  <ul className="rows">
-                    {rows.map((e) => (
-                      <ExpenseRow key={e.id} e={e} tag={tagById.get(e.tag_id ?? '')} account={bucketById.get(e.paid_from)} plan={planById.get(e.plan_id ?? '')} hkd={hkdOf(e)} month={month} onEdit={() => setEditing({ row: e })} />
-                    ))}
-                  </ul>
-                </div>
-              ))}
+              {weeks.map((w) => {
+                const thisWeek = w.days.some(([day]) => day === todayISO());
+                if (thisWeek) return w.days.map(renderDay);
+                const open = flipped.has('w:' + w.start);
+                const n = w.days.reduce((a, [, rows]) => a + rows.length, 0);
+                const spend = w.days.reduce((a, [, rows]) => a + rows.filter((e) => !e.reimbursable && Number(e.amount) > 0).reduce((s, e) => s + (hkdOf(e) ?? 0), 0), 0);
+                return (
+                  <div key={w.start} className={`week ${open ? 'open' : 'folded'}`}>
+                    <button type="button" className="day-head day-toggle week-toggle" aria-expanded={open} onClick={() => flip('w:' + w.start)}>
+                      <span>{w.label}</span>
+                      <span className="day-sum">
+                        <span className="day-count">{n} {n === 1 ? 'item' : 'items'}</span>
+                        <span className="num">{d.show(spend)}</span>
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" aria-hidden="true"><path d={open ? 'M5 15l7-7 7 7' : 'M9 5l7 7-7 7'} /></svg>
+                      </span>
+                    </button>
+                    {open && <div className="week-days">{w.days.map(renderDay)}</div>}
+                  </div>
+                );
+              })}
 
               {fromEarlier.filter((x) => !nw || (x.e.need_want ?? 'need') === nw).length > 0 && (
                 <div className="day earlier">
@@ -404,5 +444,28 @@ function ExpenseRow({ e, tag, account, plan, hkd, month, onEdit }: { e: Expense;
 function groupByDay(rows: Expense[]): [string, Expense[]][] {
   const m = new Map<string, Expense[]>();
   rows.forEach((e) => m.set(e.spent_on, [...(m.get(e.spent_on) ?? []), e]));
-  return [...m.entries()];
+  return [...m.entries()].sort((a, b) => b[0].localeCompare(a[0]));
+}
+
+/** Days grouped into Monday-to-Sunday weeks, clipped to the month: "19 – 25 Oct". */
+function groupByWeek(days: [string, Expense[]][], month: string) {
+  const M = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const iso = (t: number) => new Date(t).toISOString().slice(0, 10);
+  const monthEnd = iso(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0));
+  const out: { start: string; label: string; days: [string, Expense[]][] }[] = [];
+  days.forEach((entry) => {
+    const t = Date.UTC(Number(entry[0].slice(0, 4)), Number(entry[0].slice(5, 7)) - 1, Number(entry[0].slice(8, 10)));
+    const mon = t - ((new Date(t).getUTCDay() + 6) % 7) * 86_400_000;
+    const start = iso(mon) < month ? month : iso(mon);
+    const endRaw = iso(mon + 6 * 86_400_000);
+    const end = endRaw > monthEnd ? monthEnd : endRaw;
+    let w = out.find((x) => x.start === start);
+    if (!w) {
+      const label = start === end ? `${Number(start.slice(8))} ${M[Number(start.slice(5, 7)) - 1]}` : `${Number(start.slice(8))} – ${Number(end.slice(8))} ${M[Number(end.slice(5, 7)) - 1]}`;
+      w = { start, label, days: [] };
+      out.push(w);
+    }
+    w.days.push(entry);
+  });
+  return out;
 }
