@@ -38,6 +38,9 @@ export function ExpenseScreen({ tags, buckets, plans, onTagsChanged, quickLog }:
   const [nw, setNw] = useState<NeedWant | ''>('');
   const [filter, setFilter] = useState<Filter>('all');
   const [account, setAccount] = useState<string>('');
+  // Past days fold into one line with their total; today stays open. Tap a day to open or close it.
+  const [flipped, setFlipped] = useState<Set<string>>(new Set());
+  const flip = (day: string) => setFlipped((f) => { const n = new Set(f); if (n.has(day)) n.delete(day); else n.add(day); return n; });
   const [displayCur, setDisplayCur] = useState<DisplayCurrency>(savedDisplay());
 
   const reload = useCallback(async () => {
@@ -311,16 +314,31 @@ export function ExpenseScreen({ tags, buckets, plans, onTagsChanged, quickLog }:
               {days.length === 0 && (
                 <p className="muted center empty">{spent.length === 0 ? `Nothing logged for ${monthOnly(month)} yet.` : 'Nothing matches this filter.'}</p>
               )}
-              {days.map(([day, rows]) => (
-                <div key={day} className="day">
-                  <h3 className="day-head">{Number(day.slice(8))} {shortMonth(day)}</h3>
-                  <ul className="rows">
-                    {rows.map((e) => (
-                      <ExpenseRow key={e.id} e={e} tag={tagById.get(e.tag_id ?? '')} account={bucketById.get(e.paid_from)} plan={planById.get(e.plan_id ?? '')} hkd={hkdOf(e)} month={month} onEdit={() => setEditing({ row: e })} />
-                    ))}
-                  </ul>
-                </div>
-              ))}
+              {days.map(([day, rows]) => {
+                const today = day === todayISO();
+                const open = today !== flipped.has(day);
+                const spend = rows.filter((e) => !e.reimbursable && Number(e.amount) > 0).reduce((s, e) => s + (hkdOf(e) ?? 0), 0);
+                const label = today ? `Today · ${Number(day.slice(8))} ${shortMonth(day)}` : `${Number(day.slice(8))} ${shortMonth(day)}`;
+                return (
+                  <div key={day} className={`day ${open ? 'open' : 'folded'}`}>
+                    <button type="button" className="day-head day-toggle" aria-expanded={open} onClick={() => flip(day)}>
+                      <span>{label}</span>
+                      <span className="day-sum">
+                        {!open && <span className="day-count">{rows.length} {rows.length === 1 ? 'item' : 'items'}</span>}
+                        <span className="num">{d.show(spend)}</span>
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" aria-hidden="true"><path d={open ? 'M5 15l7-7 7 7' : 'M9 5l7 7-7 7'} /></svg>
+                      </span>
+                    </button>
+                    {open && (
+                      <ul className="rows">
+                        {rows.map((e) => (
+                          <ExpenseRow key={e.id} e={e} tag={tagById.get(e.tag_id ?? '')} account={bucketById.get(e.paid_from)} plan={planById.get(e.plan_id ?? '')} hkd={hkdOf(e)} month={month} onEdit={() => setEditing({ row: e })} />
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                );
+              })}
 
               {fromEarlier.filter((x) => !nw || (x.e.need_want ?? 'need') === nw).length > 0 && (
                 <div className="day earlier">
@@ -404,5 +422,5 @@ function ExpenseRow({ e, tag, account, plan, hkd, month, onEdit }: { e: Expense;
 function groupByDay(rows: Expense[]): [string, Expense[]][] {
   const m = new Map<string, Expense[]>();
   rows.forEach((e) => m.set(e.spent_on, [...(m.get(e.spent_on) ?? []), e]));
-  return [...m.entries()];
+  return [...m.entries()].sort((a, b) => b[0].localeCompare(a[0]));
 }
