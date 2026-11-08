@@ -16,6 +16,13 @@ const SECTION_TITLE: Record<string, string> = { Liquid: 'Liquid', 'Locked until 
 const sectionOf = (b: Bucket) => (isDebt(b) ? 'Debts' : SECTIONS.includes(b.liquidity as never) ? b.liquidity : 'Liquid');
 const dayMonth = (iso: string) => `${Number(iso.slice(8))} ${shortMonth(iso.slice(0, 7) + '-01')}`;
 const toHkd = (v: number, cur: string, rates: Record<string, number>) => (cur === 'HKD' ? v : rates[cur] ? v * rates[cur] : null);
+/** What "put in so far" means for each kind of account. */
+const PUT_IN_HINT: Record<string, string> = {
+  Brokerage: 'Net deposits, e.g. IBKR “Deposits & withdrawals”',
+  Equity: 'What you paid for the shares (0 if granted)',
+  Retirement: 'Your contributions so far',
+  Insurance: 'Premiums paid so far',
+};
 const num = (s: string) => (s.trim() === '' ? null : Number(s.replace(/,/g, '')));
 
 export function NetWorthScreen({ buckets, tags, onChange }: { buckets: Bucket[]; tags: Tag[]; onChange: () => void }) {
@@ -120,6 +127,19 @@ export function NetWorthScreen({ buckets, tags, onChange }: { buckets: Bucket[];
               </section>
 
               {last && prev && <ChangeCard buckets={buckets} data={data} from={prev.month} to={last.month} total={last.net - prev.net} d={d} />}
+              {history.length > 0 && (
+                <section className="card stack">
+                  <h2 className="card-h">Past closes</h2>
+                  <ul className="rows bridge">
+                    {[...history].reverse().map((h) => (
+                      <li key={h.month} className="bridge-row">
+                        <span className="row-main"><span className="tag">{monthName(h.month)}</span><span className="muted small">Closed {dayMonth(h.closedOn)}</span></span>
+                        <span className="num">{d.show(h.net)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              )}
               {history.length >= 2 && <Chart points={history.map((h) => ({ month: h.month, value: h.net }))} d={d} />}
             </aside>
 
@@ -277,6 +297,9 @@ function CloseSheet({ buckets, tags, data, onClose, onSaved }: { buckets: Bucket
   const open = buckets.filter((b) => b.active);
   // Pre-fills start from the close before this month's.
   const prior = (b: Bucket) => data.balances.find((x) => x.bucket_id === b.id && x.month < month) ?? null;
+  // Redoing a month: start from what you saved for it, so you only override what changed.
+  const saved = (b: Bucket) => data.balances.find((x) => x.bucket_id === b.id && x.month === month) ?? null;
+  const savedOn = data.balances.find((x) => x.month === month)?.closed_on;
   const init = () => {
     const v: Record<string, { value: string; moneyIn: string; putIn: string }> = {};
     for (const b of open) {
@@ -284,9 +307,10 @@ function CloseSheet({ buckets, tags, data, onClose, onSaved }: { buckets: Bucket
       const comp = computedValue(b, data, rates);
       const f = p ? flowsSince(b, p.closed_on, data, tags, rates) : { moneyIn: 0, spent: 0 };
       const guess = comp?.value ?? (p ? p.value + (kindOf(b) === 'property' ? 0 : f.moneyIn - f.spent) : null);
+      const sv = saved(b);
       v[b.id] = {
-        value: guess === null ? '' : fmtNum(Math.round(guess * 100) / 100),
-        moneyIn: p && hasGain(b) ? fmtNum(Math.round(f.moneyIn * 100) / 100) : '',
+        value: sv ? fmtNum(sv.value) : guess === null ? '' : fmtNum(Math.round(guess * 100) / 100),
+        moneyIn: !(p && hasGain(b)) ? '' : sv ? fmtNum(sv.money_in) : fmtNum(Math.round(f.moneyIn * 100) / 100),
         putIn: fmtNum(b.put_in_before ?? ''),
       };
     }
@@ -321,7 +345,12 @@ function CloseSheet({ buckets, tags, data, onClose, onSaved }: { buckets: Bucket
   return (
     <Sheet title={`${redo ? 'Redo' : 'Close'} ${monthName(month)}`} onClose={onClose} wide>
       <form className="stack" onSubmit={submit}>
-        <p className="muted small">Values as of today, {dayMonth(today)}, each in its own currency. Pre-filled from your last close plus what you’ve logged since. Leave a box empty to skip an account this month.</p>
+        <p className="muted small">
+          {redo && savedOn
+            ? <>You closed {monthOnly(month)} on {dayMonth(savedOn)}. Your saved values are filled in: change any box to override it. </>
+            : <>Values as of today, {dayMonth(today)}, each in its own currency. Pre-filled from your last close plus what you’ve logged since. </>}
+          Leave a box empty to skip an account.
+        </p>
         <div className="close-list">
           {SECTIONS.map((s) => {
             const items = open.filter((b) => sectionOf(b) === s);
@@ -334,9 +363,11 @@ function CloseSheet({ buckets, tags, data, onClose, onSaved }: { buckets: Bucket
                   const debt = isDebt(b);
                   const comp = debt ? computedValue(b, data, rates) : null;
                   const first = !prior(b);
+                  const p = prior(b), sv = saved(b);
+                  const was = sv && !debt ? `Saved ${money(sv.value, b.currency)}` : p ? `Last close ${money(p.value, b.currency)}` : debt ? '' : 'First close';
                   return (
                     <div key={b.id} className={`close-row t-${b.type}`}>
-                      <span className="close-name"><span className="acct-dot" aria-hidden="true" />{b.name}</span>
+                      <span className="close-name"><span className="close-title"><span className="acct-dot" aria-hidden="true" />{b.name}</span>{was && <span className="muted small">{was}</span>}</span>
                       {debt && comp ? (
                         <span className="close-auto"><span className="num">{money(comp.value, b.currency)}</span><span className="muted small">{kindOf(b) === 'card' ? 'not settled yet' : 'from schedule'}</span></span>
                       ) : (
@@ -347,7 +378,7 @@ function CloseSheet({ buckets, tags, data, onClose, onSaved }: { buckets: Bucket
                         </label>
                       )}
                       {hasGain(b) && kindOf(b) !== 'property' && (first ? (
-                        <label className="close-sub"><span>Put in so far <em className="muted">e.g. IBKR net deposits</em></span>
+                        <label className="close-sub"><span>Put in so far <em className="muted">{PUT_IN_HINT[b.type] ?? 'Money you put in so far'}</em></span>
                           <input inputMode="decimal" placeholder="Optional" value={v.putIn} onInput={commas} onChange={(e) => set(b.id, 'putIn', e.target.value)} />
                         </label>
                       ) : (
