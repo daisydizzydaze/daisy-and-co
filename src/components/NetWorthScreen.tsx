@@ -121,6 +121,11 @@ export function NetWorthScreen({ buckets, tags, onChange }: { buckets: Bucket[];
                   <span><span className="num strong">{d.show(liquid)}</span> <span className="muted small">liquid</span></span>
                   <span className="muted small">of <span className="num">{d.show(target)}</span></span>
                 </div>
+                {target !== null && (
+                  <div className="fire-togo">
+                    {liquid >= target ? <span className="strong">Target reached</span> : <><span className="num strong">{d.show(target - liquid)}</span> <span className="muted small">to go</span></>}
+                  </div>
+                )}
                 <button className="assumptions" onClick={() => setEditFire(true)}>
                   Assumes {money(data.settings.fire_monthly_spend, 'HKD')} a month, all in (rent included), and a {(data.settings.withdrawal_rate * 100).toFixed(1).replace(/\.0$/, '')}% yearly withdrawal. <span className="link">Change</span>
                 </button>
