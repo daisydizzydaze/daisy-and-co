@@ -9,8 +9,9 @@ import { AllocationScreen } from './components/AllocationScreen';
 import { SetupScreen } from './components/SetupScreen';
 import { ExpenseScreen } from './components/ExpenseScreen';
 import { NetWorthScreen } from './components/NetWorthScreen';
+import { BudgetScreen } from './components/BudgetScreen';
 
-type View = 'allocation' | 'expenses' | 'networth' | 'setup';
+type View = 'allocation' | 'expenses' | 'budget' | 'networth' | 'setup';
 
 export function App() {
   const [session, setSession] = useState<Session | null | undefined>(undefined);
@@ -65,6 +66,8 @@ export function App() {
           <AllocationScreen month={month} setMonth={setMonth} tags={tags} buckets={buckets} onTagsChanged={reloadSetup} />
         ) : view === 'expenses' ? (
           <ExpenseScreen tags={tags} buckets={buckets} plans={plans} onTagsChanged={reloadSetup} quickLog={quickLog} />
+        ) : view === 'budget' ? (
+          <BudgetScreen buckets={buckets} tags={tags} plans={plans} onChange={reloadSetup} />
         ) : view === 'networth' ? (
           <NetWorthScreen buckets={buckets} tags={tags} onChange={reloadSetup} />
         ) : (
@@ -79,6 +82,10 @@ export function App() {
         <button aria-current={view === 'expenses' ? 'page' : undefined} onClick={() => setView('expenses')}>
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><rect x="3" y="6" width="18" height="13" rx="2" /><path d="M3 10h18" /></svg>
           Expenses
+        </button>
+        <button aria-current={view === 'budget' ? 'page' : undefined} onClick={() => setView('budget')}>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M3 10h18M8 3v4M16 3v4" /></svg>
+          Budget
         </button>
         <button aria-current={view === 'networth' ? 'page' : undefined} onClick={() => setView('networth')}>
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2" /></svg>

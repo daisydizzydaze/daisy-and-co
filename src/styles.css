@@ -573,7 +573,7 @@ input, select, textarea { font-size: 16px; }
 .week-days { padding-left: 12px; border-left: 2px solid var(--line); margin: 2px 0 8px; }
 
 /* Net worth */
-.tabbar { grid-template-columns: repeat(4, 1fr); }
+.tabbar { grid-template-columns: repeat(5, 1fr); }
 @media (min-width: 960px) { .tabbar { grid-template-columns: 1fr; } }
 .credit { color: color-mix(in srgb, #1F7A4D 85%, var(--ink)); }
 .nw-close-btn { align-self: flex-start; margin-top: 10px; }
@@ -650,3 +650,37 @@ input, select, textarea { font-size: 16px; }
 .range button[aria-pressed='true'] { background: var(--ink); color: var(--bg); }
 .trend { display: flex; flex-wrap: wrap; gap: 8px; }
 .trend-item { flex: 1 1 120px; display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border: 1.5px solid var(--line); border-radius: 14px; background: var(--bg); }
+
+/* ---------- budget (the yearly plan) ---------- */
+.years { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.years button { min-height: 36px; min-width: 60px; border: 1.5px solid var(--ink); border-radius: 999px; background: var(--paper); font-size: 13px; font-weight: 600; cursor: pointer; }
+.years button[aria-pressed='true'] { background: var(--ink); color: var(--bg); }
+.hero.room { background: color-mix(in srgb, var(--yellow) 26%, var(--paper)); }
+.budget-statement { overflow: hidden; }
+.bline { width: 100%; display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; padding: 12px 16px; background: none; border: none; border-bottom: 1px solid var(--line); text-align: left; cursor: pointer; }
+.bline .row-main { gap: 2px; }
+.bline .row-main .small, .plans-block .row-main .small { white-space: normal; }
+.bline:active { background: var(--bg); }
+.minus { color: var(--muted); margin-right: 4px; }
+.plans-block .rows { margin-top: 4px; }
+.guess { display: inline-flex; align-items: center; min-height: 32px; padding: 0 12px; border: 1.5px dashed var(--ink); border-radius: 999px; font-size: 13px; font-weight: 600; white-space: nowrap; }
+.guess.small-guess { min-height: 26px; font-size: 12px; padding: 0 10px; }
+.budget-foot { padding: 0 16px 12px; margin: 0; }
+.yb { display: flex; height: 34px; border: 1.5px solid var(--ink); border-radius: 10px; overflow: hidden; font-size: 12px; font-weight: 700; }
+.yb span { display: flex; align-items: center; justify-content: center; border-right: 1.5px solid var(--ink); white-space: nowrap; overflow: hidden; }
+.yb span:last-child { border-right: none; }
+.yb .living, .legend-keys i.living { background: var(--pink); }
+.yb .growth, .legend-keys i.growth { background: var(--ink); color: var(--bg); }
+.yb .plans, .legend-keys i.plans { background: var(--sky); }
+.yb .free, .legend-keys i.free { background: repeating-linear-gradient(45deg, var(--paper) 0 5px, var(--sand) 5px 7px); }
+.legend-keys { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 13px; }
+.legend-keys i { display: inline-block; width: 11px; height: 11px; border: 1.5px solid var(--ink); border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+.months { display: grid; grid-template-columns: repeat(12, 1fr); gap: 3px; font-size: 10px; text-align: center; color: var(--muted); }
+.mcell { height: 26px; border-radius: 6px; background: var(--bg); margin-top: 3px; display: flex; flex-direction: column; overflow: hidden; }
+.mcell span { flex: 1; border: 1.5px solid var(--ink); border-radius: 6px; }
+.tally { background: color-mix(in srgb, var(--lilac) 18%, var(--paper)); }
+.tally h2, .budget .later h2 { font-size: 17px; }
+.tally-rows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; font-size: 14px; }
+.tally-rows li { display: flex; justify-content: space-between; gap: 10px; }
+.tally-rows li.strong { border-top: 1px solid var(--line); padding-top: 6px; }
+.hero .big.neg-big { color: var(--bad); }
