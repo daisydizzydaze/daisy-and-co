@@ -271,14 +271,20 @@ function TallyCard({ v, d, onEdit }: { v: YearView; d: Display; onEdit: () => vo
       </div>
       {t.spent === null ? (
         <p className="muted small">
-          What {t.year} really cost: take-home pay minus what your net worth grew by from saving.
-          {t.nwEnd === null ? ` Needs your December ${t.year} close, then a few numbers from your own records.` : ' Fill in the missing numbers to finish it.'}
+          What {t.year} really cost: take-home pay minus what you saved and invested. Needs only a few rough numbers from your own records.
         </p>
       ) : (
         <>
           <ul className="tally-rows">
             <li><span>Take-home pay</span><span className="num">{d.show(t.takeHome)}</span></li>
-            <li><span>− Saved (net worth growth, gains taken out)</span><span className="num">{d.show(t.nwEnd! - t.nwStart! - (t.gains ?? 0))}</span></li>
+            {t.method === 'saved' ? (
+              <>
+                <li><span>− Saved and invested</span><span className="num">{d.show(t.saved)}</span></li>
+                {t.cashChange !== 0 && <li><span>{t.cashChange > 0 ? '− Cash went up' : '+ Cash went down'}</span><span className="num">{d.show(Math.abs(t.cashChange))}</span></li>}
+              </>
+            ) : (
+              <li><span>− Saved (net worth growth, gains taken out)</span><span className="num">{d.show(t.nwEnd! - t.nwStart! - (t.gains ?? 0))}</span></li>
+            )}
             <li className="strong"><span>Spent in {t.year}</span><span className="num">{d.show(t.spent)}</span></li>
             {t.oneOffs > 0 && <li><span>− One-offs</span><span className="num">{d.show(t.oneOffs)}</span></li>}
           </ul>
@@ -347,27 +353,45 @@ function TallySheet({ row, v, d, onClose, onSaved }: { row: YearBudget; v: YearV
   const t = v.tally;
   const [cur, setCur] = useState(row.currency);
   const [takeHome, setTakeHome] = useState(fmtNum(row.tally_take_home));
+  const [saved, setSaved] = useState(fmtNum(row.tally_saved ?? null));
+  const [cash, setCash] = useState(fmtNum(row.tally_cash_change ?? null));
   const [start, setStart] = useState(fmtNum(row.tally_nw_start));
   const [gains, setGains] = useState(fmtNum(row.tally_gains));
   const [oneOffs, setOneOffs] = useState(fmtNum(row.tally_one_offs));
+  const [useNw, setUseNw] = useState(row.tally_saved == null && row.tally_nw_start != null);
   const { busy, error, run } = useSubmit(onSaved);
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
-    run(() => saveYear({ ...row, currency: cur, tally_take_home: numOrNull(takeHome), tally_nw_start: numOrNull(start), tally_gains: numOrNull(gains), tally_one_offs: numOrNull(oneOffs) }));
+    run(() => saveYear({
+      ...row, currency: cur, tally_take_home: numOrNull(takeHome), tally_one_offs: numOrNull(oneOffs),
+      tally_saved: useNw ? null : numOrNull(saved), tally_cash_change: useNw ? null : numOrNull(cash),
+      tally_nw_start: useNw ? numOrNull(start) : row.tally_nw_start, tally_gains: useNw ? numOrNull(gains) : row.tally_gains,
+    }));
   };
   return (
     <Sheet title={`${row.year} tally`} onClose={onClose}>
       <form className="stack" onSubmit={submit}>
         <p className="muted small">
-          Spent = take-home pay − (net worth at the end − at the start − investment gains).
-          Net worth at the end comes from your December close: {t.nwEnd === null ? 'not closed yet' : <span className="num strong">{d.inCur(t.nwEnd, cur)}</span>}.
+          {useNw
+            ? <>Spent = take-home pay − (net worth at the end − at the start − investment gains). Net worth at the end comes from your December close: {t.nwEnd === null ? 'not closed yet' : <span className="num strong">{d.inCur(t.nwEnd, cur)}</span>}.</>
+            : 'Spent = take-home pay − what you saved and invested − how much your cash went up. Rough numbers are fine.'}
         </p>
         <CurrencyPick value={cur} onChange={setCur} />
         <Opt label={`Take-home pay in ${row.year}`} value={takeHome} onChange={setTakeHome} placeholder={t.takeHomeFromApp ? d.inCur(t.takeHome, cur) : 'From your records'} hint={t.takeHomeFromApp ? 'Leave empty to use the app’s 12 months' : 'All 12 months, after tax'} />
-        <Opt label={`Net worth on 1 January ${row.year}`} value={start} onChange={setStart} placeholder={t.nwStartFromApp ? 'From your December close' : 'From your records'} hint={t.nwStartFromApp ? 'Leave empty to use the December close before' : undefined} />
-        <Opt label="Investment gains, roughly" value={gains} onChange={setGains} placeholder={t.appGains !== null ? 'Worked out' : '0'}
-          hint={`Market and currency moves, which aren’t savings.${t.appGains !== null ? ` The app saw ${d.inCur(t.appGains, cur)} since your first close.` : ''}`} />
+        {useNw ? (
+          <>
+            <Opt label={`Net worth on 1 January ${row.year}`} value={start} onChange={setStart} placeholder={t.nwStartFromApp ? 'From your December close' : 'From your records'} hint={t.nwStartFromApp ? 'Leave empty to use the December close before' : undefined} />
+            <Opt label="Investment gains, roughly" value={gains} onChange={setGains} placeholder={t.appGains !== null ? 'Worked out' : '0'}
+              hint={`Market and currency moves, which aren’t savings.${t.appGains !== null ? ` The app saw ${d.inCur(t.appGains, cur)} since your first close.` : ''}`} />
+          </>
+        ) : (
+          <>
+            <Opt label={`Saved and invested in ${row.year}`} value={saved} onChange={setSaved} placeholder="From your records" hint="Everything you put in: IBKR, SRS, other savings. Leave gains out" />
+            <Opt label="Cash went up by (optional)" value={cash} onChange={setCash} placeholder="About the same" hint="Bank and cash balances at the end of the year minus the start. Use a minus if they went down" />
+          </>
+        )}
         <Opt label="Big one-offs that won’t repeat" value={oneOffs} onChange={setOneOffs} placeholder="None" hint="Trips or big buys, taken out of next year’s living costs" />
+        <button type="button" className="link small" onClick={() => setUseNw(!useNw)}>{useNw ? 'Use what you saved instead' : 'Use net worth instead'}</button>
         {error && <p className="error" role="alert">{error}</p>}
         <Actions busy={busy} />
       </form>

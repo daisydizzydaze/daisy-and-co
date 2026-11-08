@@ -19,6 +19,8 @@ export interface YearBudget {
   tally_nw_start: number | null;
   tally_gains: number | null;
   tally_one_offs: number | null;
+  tally_saved?: number | null; // arrives with migration 011
+  tally_cash_change?: number | null;
 }
 
 export interface BudgetData {
@@ -52,6 +54,7 @@ export async function loadBudget(): Promise<BudgetData> {
       currency: String(r.currency ?? 'SGD'),
       take_home: n(r.take_home), bonus: n(r.bonus), living_monthly: n(r.living_monthly), growth_monthly: n(r.growth_monthly),
       tally_take_home: n(r.tally_take_home), tally_nw_start: n(r.tally_nw_start), tally_gains: n(r.tally_gains), tally_one_offs: n(r.tally_one_offs),
+      ...('tally_saved' in r ? { tally_saved: n(r.tally_saved), tally_cash_change: n(r.tally_cash_change) } : {}),
     })),
     missingTable: !!years.error,
   };
@@ -94,6 +97,9 @@ export interface Tally {
   gains: number | null;
   appGains: number | null; // gains + currency the app saw between closes that year
   oneOffs: number;
+  saved: number | null; // typed: put into savings and investments that year
+  cashChange: number; // typed: cash balances, end minus start
+  method: 'saved' | 'networth' | null;
   spent: number | null; // everything that year, trips included
   living: number | null; // per month, one-offs taken out
 }
@@ -163,8 +169,14 @@ function tallyFor(year: number, row: YearBudget | undefined, d: BudgetData, buck
   const gains = typed(row?.tally_gains ?? null, cur, rates) ?? appGains;
   const oneOffs = typed(row?.tally_one_offs ?? null, cur, rates) ?? 0;
   const nwEnd = dec?.net ?? null;
-  const spent = takeHome !== null && nwStart !== null && nwEnd !== null ? takeHome - (nwEnd - nwStart - (gains ?? 0)) : null;
+  // Two ways: from what you put away (simplest), or from how net worth grew.
+  const saved = typed(row?.tally_saved ?? null, cur, rates);
+  const cashChange = typed(row?.tally_cash_change ?? null, cur, rates) ?? 0;
+  const method: Tally['method'] = takeHome === null ? null : saved !== null ? 'saved' : nwStart !== null && nwEnd !== null ? 'networth' : null;
+  const spent = method === 'saved' ? takeHome! - saved! - cashChange
+    : method === 'networth' ? takeHome! - (nwEnd! - nwStart! - (gains ?? 0)) : null;
   return {
+    saved, cashChange, method,
     year, takeHome, takeHomeFromApp: typedTakeHome === null && appTakeHome !== null,
     nwStart, nwStartFromApp: typedStart === null && !!prevDec, nwEnd, gains, appGains, oneOffs,
     spent, living: spent === null ? null : Math.max(0, spent - oneOffs) / 12,
