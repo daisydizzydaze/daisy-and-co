@@ -5,7 +5,7 @@ import { supabase } from './supabase';
 import { ratesFrom, toHkd } from './fx';
 import { bridge, ratesAt, totalsByMonth, type Balance, type NetWorthData } from './networth';
 import { makeHkdOf } from './spend';
-import { addMonths, monthKey, thisMonth } from './format';
+import { BOOKS_START, addMonths, monthKey, thisMonth } from './format';
 import type { Bucket, Expense, FxRate, Plan, Statement } from './types';
 
 export interface YearBudget {
@@ -125,15 +125,14 @@ function typed(v: number | null, cur: string, rates: Record<string, number>): nu
 
 const isRefund = (e: Expense) => Number(e.amount) < 0;
 
-/** Average spend per month over up to the last 12 full months logged, plan costs left out. */
+/** Average spend per month over up to the last 12 full months since the books start, plan costs left out. */
 export function loggedAverage(expenses: Expense[], fx: FxRate[], now = thisMonth()): { monthly: number | null; months: number } {
   const hkdOf = makeHkdOf(fx);
   const everyday = expenses.filter((e) => !e.plan_id && !e.reimbursable && !isRefund(e));
   if (!everyday.length) return { monthly: null, months: 0 };
-  // The first month is usually only partly logged, so full months start the month after.
-  const first = everyday.reduce((m, e) => (e.budget_month < m ? e.budget_month : m), everyday[0].budget_month);
+  // Only full months from the start of the books count (earlier months are only partly logged).
   const months: string[] = [];
-  for (let m = addMonths(now, -1); m > first && months.length < 12; m = addMonths(m, -1)) months.push(m);
+  for (let m = addMonths(now, -1); m >= BOOKS_START && months.length < 12; m = addMonths(m, -1)) months.push(m);
   if (!months.length) return { monthly: null, months: 0 };
   const set = new Set(months);
   const total = everyday.filter((e) => set.has(e.budget_month)).reduce((s, e) => s + (hkdOf(e) ?? 0), 0);

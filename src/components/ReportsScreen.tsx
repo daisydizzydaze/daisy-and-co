@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { DisplayContext, makeDisplay, savedDisplay, type Display } from '../lib/display';
-import { monthName, thisMonth } from '../lib/format';
+import { BOOKS_START, monthName, thisMonth } from '../lib/format';
 import { ratesAt } from '../lib/networth';
 import {
-  buildReport, dayMonth, loadReports, periodAt, periodLabel, periodShort, shift,
+  buildReport, dayMonth, endOf, loadReports, periodAt, periodLabel, periodShort, shift,
   type Line, type Period, type PeriodKind, type Report, type ReportData, type Status,
 } from '../lib/reports';
 import type { Bucket, Plan, Tag } from '../lib/types';
@@ -34,13 +34,14 @@ export function ReportsScreen({ buckets, tags, plans }: { buckets: Bucket[]; tag
   const d = makeDisplay(savedDisplay(), rates);
   const report = useMemo(() => (data ? buildReport(period, data, buckets, tags, plans) : null), [data, period, buckets, tags, plans]);
   const canNext = shift(period, 1).start <= thisMonth();
+  const canPrev = endOf(shift(period, -1)) >= BOOKS_START;
   const pick = (k: PeriodKind) => { setPeriod(periodAt(k, period.kind === k ? period.start : thisMonth())); };
 
   return (
     <DisplayContext.Provider value={d}>
       <div className="screen reports">
         <header className="month-nav">
-          <button className="icon-btn" aria-label="Earlier" onClick={() => setPeriod(shift(period, -1))}>
+          <button className="icon-btn" aria-label="Earlier" disabled={!canPrev} onClick={() => setPeriod(shift(period, -1))}>
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M15 5l-7 7 7 7" /></svg>
           </button>
           <div className="month-title">
@@ -129,6 +130,7 @@ function Glance({ r, p }: { r: Report; p: Period }) {
             : worst ? `One to watch: ${WATCH[worst[0]]}${extra}`
             : 'Everything checked looks good.'}
           {checked.length > 0 && checked.length < 5 && ` ${5 - checked.length} need more data.`}
+          {r.partStart && ' Spending counts from November 2026, when your books start.'}
         </span>
       </div>
       <Bud mood={mood} size={60} coin={mood === 'cheer'} />

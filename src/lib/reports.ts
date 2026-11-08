@@ -3,7 +3,7 @@
 import { supabase } from './supabase';
 import { bridge, kindOf, ratesAt, totalsByMonth, type Balance, type MonthTotals, type NetWorthData } from './networth';
 import { makeHkdOf, shareIn, usedMonths } from './spend';
-import { addMonths, monthKey, shortMonth, thisMonth, todayISO } from './format';
+import { BOOKS_START, addMonths, monthKey, shortMonth, thisMonth, todayISO } from './format';
 import type { Allocation, Bucket, Expense, FxRate, Income, Plan, Statement, Tag } from './types';
 
 export interface ReportData {
@@ -132,18 +132,13 @@ export interface AddUp {
   gap: number | null;
 }
 
-export interface Report { means: Means; richer: Richer; runway: Runway; creep: Creep; addUp: AddUp; inProgress: boolean }
+export interface Report { means: Means; richer: Richer; runway: Runway; creep: Creep; addUp: AddUp; inProgress: boolean; partStart: boolean }
 
 const isRefund = (e: Expense) => Number(e.amount) < 0;
 
-/** The first month with logged spending is usually partial; full months start after it. */
-function firstLogged(expenses: Expense[]): string | null {
-  const ms = expenses.filter((e) => !e.reimbursable).map((e) => e.budget_month);
-  return ms.length ? ms.reduce((a, b) => (a < b ? a : b)) : null;
-}
-
 export function buildReport(p: Period, d: ReportData, buckets: Bucket[], tags: Tag[], plans: Plan[], now = thisMonth()): Report {
-  const months = monthsOf(p);
+  // Spending and pay count from the start of the books; closes (balance sheet, cash flow) count from the first close.
+  const months = monthsOf(p).filter((m) => m >= BOOKS_START);
   const set = new Set(months);
   const hkdOf = makeHkdOf(d.fx);
   const tagById = new Map(tags.map((t) => [t.id, t]));
@@ -190,7 +185,8 @@ export function buildReport(p: Period, d: ReportData, buckets: Bucket[], tags: T
   // ---- 2. Getting richer: last close in the period vs the close before it ----
   const nw = { balances: d.balances, fx: d.fx } as NetWorthData;
   const closes = totalsByMonth(buckets, nw);
-  const end = [...closes].reverse().find((c) => set.has(c.month)) ?? null;
+  const allMonths = new Set(monthsOf(p));
+  const end = [...closes].reverse().find((c) => allMonths.has(c.month)) ?? null;
   const prev = [...closes].reverse().find((c) => c.month < p.start) ?? null;
   let gains: number | null = null, currency: number | null = null;
   if (end && prev) {
@@ -232,8 +228,7 @@ export function buildReport(p: Period, d: ReportData, buckets: Bucket[], tags: T
   };
 
   // ---- 3. Ride out a bad month: cash & bank at the close ÷ usual monthly spending ----
-  const first = firstLogged(counted);
-  const fullBefore = (m: string) => (first !== null && m > first && m < now);
+  const fullBefore = (m: string) => m >= BOOKS_START && m < now;
   const everydayIn = (m: string) => counted.filter((e) => !e.plan_id).reduce((s, e) => s + (hkdOf(e) ?? 0) * shareIn(e, m), 0);
   const avgMonths: string[] = [];
   for (let m = endOf(p) < now ? endOf(p) : addMonths(now, -1); fullBefore(m) && avgMonths.length < 3; m = addMonths(m, -1)) avgMonths.push(m);
@@ -324,7 +319,7 @@ export function buildReport(p: Period, d: ReportData, buckets: Bucket[], tags: T
     };
   }
 
-  return { means, richer, runway, creep, addUp, inProgress };
+  return { means, richer, runway, creep, addUp, inProgress, partStart: p.start < BOOKS_START };
 }
 
 export const dayMonth = (iso: string) => `${Number(iso.slice(8))} ${shortMonth(iso.slice(0, 7) + '-01')}`;
