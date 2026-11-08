@@ -645,3 +645,6 @@ input, select, textarea { font-size: 16px; }
 .nw-sec.open { padding-bottom: 12px; }
 .nw-area { fill: var(--accent); stroke: var(--ink); stroke-width: 1; opacity: 0.85; }
 .nw-line-key { width: 16px; height: 0; border-top: 2px solid var(--ink); }
+.range { display: flex; gap: 6px; margin-top: -4px; }
+.range button { min-height: 32px; min-width: 44px; padding: 0 10px; border: 1.5px solid var(--ink); border-radius: 999px; background: var(--paper); font-size: 13px; font-weight: 600; cursor: pointer; }
+.range button[aria-pressed='true'] { background: var(--ink); color: var(--bg); }

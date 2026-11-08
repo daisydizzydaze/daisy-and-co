@@ -32,6 +32,7 @@ export function NetWorthScreen({ buckets, tags, onChange }: { buckets: Bucket[];
   const [editFire, setEditFire] = useState(false);
   const [displayCur, setDisplayCur] = useState<DisplayCurrency>(savedDisplay());
   const [focus, setFocus] = useState<string | null>(null);
+  const [allCloses, setAllCloses] = useState(false);
   const [openSecs, setOpenSecs] = useState<Set<string>>(() => {
     try { return new Set(JSON.parse(localStorage.getItem('nw-open') ?? '[]')); } catch { return new Set(); }
   });
@@ -146,13 +147,14 @@ export function NetWorthScreen({ buckets, tags, onChange }: { buckets: Bucket[];
                 <section className="card stack later">
                   <h2 className="card-h">Past closes</h2>
                   <ul className="rows bridge">
-                    {[...history].reverse().map((h) => (
+                    {[...history].reverse().slice(0, allCloses ? undefined : 3).map((h) => (
                       <li key={h.month} className="bridge-row">
                         <span className="row-main"><span className="tag">{monthName(h.month)}</span><span className="muted small">Closed {dayMonth(h.closedOn)}</span></span>
                         <span className="num">{d.show(h.net)}</span>
                       </li>
                     ))}
                   </ul>
+                  {history.length > 3 && <button className="link small" onClick={() => setAllCloses(!allCloses)}>{allCloses ? 'Show fewer' : `Show all ${history.length}`}</button>}
                 </section>
               )}
               <div className="later">{history.length >= 3 ? <StackedChart history={history} d={d} /> : history.length >= 2 && <Chart points={history.map((h) => ({ month: h.month, value: h.net }))} d={d} />}</div>
@@ -485,7 +487,12 @@ function MixBar({ accounts, hkdOf, assets, debts, d, focus, onFocus }: {
 }
 
 /** From three closes on: assets stacked by section, net worth as a line on top. */
-function StackedChart({ history, d }: { history: { month: string; net: number; bySection: Record<string, number> }[]; d: Display }) {
+type Range = '6' | '12' | 'all';
+function StackedChart({ history: all, d }: { history: { month: string; net: number; bySection: Record<string, number> }[]; d: Display }) {
+  const [range, setRange] = useState<Range>(() => { try { return (localStorage.getItem('nw-range') as Range) || '12'; } catch { return '12'; } });
+  const pickRange = (r: Range) => { setRange(r); try { localStorage.setItem('nw-range', r); } catch { /* private mode */ } };
+  const sliced = range === 'all' ? all : all.slice(-Number(range));
+  const history = sliced.length >= 2 ? sliced : all.slice(-2);
   const W = 320, H = 140, P = 8;
   const top = Math.max(...history.map((h) => ASSET_SECTIONS.reduce((t, s) => t + h.bySection[s], 0))) || 1;
   const x = (i: number) => P + (i * (W - 2 * P)) / (history.length - 1);
@@ -503,15 +510,30 @@ function StackedChart({ history, d }: { history: { month: string; net: number; b
   return (
     <section className="card stack">
       <div className="block-head"><h2>Month by month</h2><span className="muted small">{d.show(last.net)} now</span></div>
+      {all.length > 6 && (
+        <div className="range" role="group" aria-label="Show">
+          {([['6', '6M'], ['12', '1Y'], ['all', 'All']] as [Range, string][]).map(([r, label]) => (
+            <button key={r} aria-pressed={range === r} onClick={() => pickRange(r)}>{label}</button>
+          ))}
+        </div>
+      )}
       <svg className="nw-chart" viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Assets by section and net worth at each close">
         {areas.map((a) => <path key={a.s} d={a.d} className={`nw-area l-${a.s.split(' ')[0]}`} />)}
         <path d={net} className="nw-line" pathLength={1} />
       </svg>
-      <div className="nw-axis muted small"><span>{shortMonth(history[0].month)}</span><span>{shortMonth(last.month)}</span></div>
+      <div className="nw-axis muted small">{axisTicks(history.map((h) => h.month)).map((m) => <span key={m}>{shortMonth(m)} {m.slice(2, 4)}</span>)}</div>
       <div className="mix-legend static">
         {ASSET_SECTIONS.map((s) => <span key={s} className={`mix-key l-${s.split(' ')[0]}`}><span className="acct-dot" aria-hidden="true" />{SHORT[s]}</span>)}
         <span className="mix-key"><span className="nw-line-key" aria-hidden="true" />Net worth</span>
       </div>
     </section>
   );
+}
+
+/** Up to 4 evenly spread month labels, first and last always shown. */
+function axisTicks(months: string[]): string[] {
+  if (months.length <= 4) return months.length > 1 ? [months[0], months[months.length - 1]] : months;
+  const n = 4, out: string[] = [];
+  for (let i = 0; i < n; i++) out.push(months[Math.round((i * (months.length - 1)) / (n - 1))]);
+  return out;
 }
