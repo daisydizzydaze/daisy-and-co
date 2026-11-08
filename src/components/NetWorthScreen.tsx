@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { DisplayContext, makeDisplay, savedDisplay, saveDisplay, type Display, type DisplayCurrency } from '../lib/display';
-import { money, monthName, monthOnly, pct, shortMonth, thisMonth, todayISO } from '../lib/format';
+import { addMonths, money, monthName, monthOnly, pct, shortMonth, thisMonth, todayISO } from '../lib/format';
 import { useMonthFx } from '../lib/useFx';
 import { commas, fmtNum } from '../lib/numInput';
 import {
@@ -146,6 +146,7 @@ export function NetWorthScreen({ buckets, tags, onChange }: { buckets: Bucket[];
               {history.length > 0 && (
                 <section className="card stack later">
                   <h2 className="card-h">Past closes</h2>
+                  {history.length >= 2 && <Trend history={history} d={d} />}
                   <ul className="rows bridge">
                     {[...history].reverse().slice(0, allCloses ? undefined : 3).map((h) => (
                       <li key={h.month} className="bridge-row">
@@ -157,7 +158,7 @@ export function NetWorthScreen({ buckets, tags, onChange }: { buckets: Bucket[];
                   {history.length > 3 && <button className="link small" onClick={() => setAllCloses(!allCloses)}>{allCloses ? 'Show fewer' : `Show all ${history.length}`}</button>}
                 </section>
               )}
-              <div className="later">{history.length >= 3 ? <StackedChart history={history} d={d} /> : history.length >= 2 && <Chart points={history.map((h) => ({ month: h.month, value: h.net }))} d={d} />}</div>
+              
             </aside>
 
             <section className="card statement" aria-label="Balance sheet">
@@ -271,25 +272,6 @@ function ChangeCard({ buckets, data, from, to, total, d }: { buckets: Bucket[]; 
   );
 }
 
-function Chart({ points, d }: { points: { month: string; value: number }[]; d: Display }) {
-  const W = 320, H = 120, P = 8;
-  const vals = points.map((p) => p.value);
-  const lo = Math.min(...vals), hi = Math.max(...vals);
-  const span = hi - lo || 1;
-  const x = (i: number) => P + (i * (W - 2 * P)) / (points.length - 1);
-  const y = (v: number) => H - P - ((v - lo) / span) * (H - 2 * P);
-  const path = points.map((p, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)} ${y(p.value).toFixed(1)}`).join(' ');
-  return (
-    <section className="card stack">
-      <div className="block-head"><h2>Month by month</h2><span className="muted small">{d.show(hi)} high</span></div>
-      <svg className="nw-chart" viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Net worth at each close">
-        <path d={path} className="nw-line" pathLength={1} />
-        {points.map((p, i) => <circle key={p.month} cx={x(i)} cy={y(p.value)} r={3.5} className="nw-pt"><title>{`${monthName(p.month)}: ${d.show(p.value)}`}</title></circle>)}
-      </svg>
-      <div className="nw-axis muted small"><span>{shortMonth(points[0].month)}</span><span>{shortMonth(points[points.length - 1].month)}</span></div>
-    </section>
-  );
-}
 
 function FireSheet({ s, onClose, onSaved }: { s: FireSettings; onClose: () => void; onSaved: () => void }) {
   const [spend, setSpend] = useState(fmtNum(s.fire_monthly_spend));
@@ -486,54 +468,27 @@ function MixBar({ accounts, hkdOf, assets, debts, d, focus, onFocus }: {
   );
 }
 
-/** From three closes on: assets stacked by section, net worth as a line on top. */
-type Range = '6' | '12' | 'all';
-function StackedChart({ history: all, d }: { history: { month: string; net: number; bySection: Record<string, number> }[]; d: Display }) {
-  const [range, setRange] = useState<Range>(() => { try { return (localStorage.getItem('nw-range') as Range) || '12'; } catch { return '12'; } });
-  const pickRange = (r: Range) => { setRange(r); try { localStorage.setItem('nw-range', r); } catch { /* private mode */ } };
-  const sliced = range === 'all' ? all : all.slice(-Number(range));
-  const history = sliced.length >= 2 ? sliced : all.slice(-2);
-  const W = 320, H = 140, P = 8;
-  const top = Math.max(...history.map((h) => ASSET_SECTIONS.reduce((t, s) => t + h.bySection[s], 0))) || 1;
-  const x = (i: number) => P + (i * (W - 2 * P)) / (history.length - 1);
-  const y = (v: number) => H - P - (v / top) * (H - 2 * P);
-  let base = history.map(() => 0);
-  const areas = ASSET_SECTIONS.map((s) => {
-    const upper = history.map((h, i) => base[i] + h.bySection[s]);
-    const pts = upper.map((v, i) => `${x(i).toFixed(1)} ${y(v).toFixed(1)}`);
-    const back = base.map((v, i) => `${x(i).toFixed(1)} ${y(v).toFixed(1)}`).reverse();
-    base = upper;
-    return { s, d: `M${pts.join(' L')} L${back.join(' L')} Z` };
-  });
-  const net = history.map((h, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)} ${y(h.net).toFixed(1)}`).join(' ');
-  const last = history[history.length - 1];
-  return (
-    <section className="card stack">
-      <div className="block-head"><h2>Month by month</h2><span className="muted small">{d.show(last.net)} now</span></div>
-      {all.length > 6 && (
-        <div className="range" role="group" aria-label="Show">
-          {([['6', '6M'], ['12', '1Y'], ['all', 'All']] as [Range, string][]).map(([r, label]) => (
-            <button key={r} aria-pressed={range === r} onClick={() => pickRange(r)}>{label}</button>
-          ))}
-        </div>
-      )}
-      <svg className="nw-chart" viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Assets by section and net worth at each close">
-        {areas.map((a) => <path key={a.s} d={a.d} className={`nw-area l-${a.s.split(' ')[0]}`} />)}
-        <path d={net} className="nw-line" pathLength={1} />
-      </svg>
-      <div className="nw-axis muted small">{axisTicks(history.map((h) => h.month)).map((m) => <span key={m}>{shortMonth(m)} {m.slice(2, 4)}</span>)}</div>
-      <div className="mix-legend static">
-        {ASSET_SECTIONS.map((s) => <span key={s} className={`mix-key l-${s.split(' ')[0]}`}><span className="acct-dot" aria-hidden="true" />{SHORT[s]}</span>)}
-        <span className="mix-key"><span className="nw-line-key" aria-hidden="true" />Net worth</span>
-      </div>
-    </section>
-  );
-}
 
-/** Up to 4 evenly spread month labels, first and last always shown. */
-function axisTicks(months: string[]): string[] {
-  if (months.length <= 4) return months.length > 1 ? [months[0], months[months.length - 1]] : months;
-  const n = 4, out: string[] = [];
-  for (let i = 0; i < n; i++) out.push(months[Math.round((i * (months.length - 1)) / (n - 1))]);
-  return out;
+
+/** How net worth moved over the last 3 and 12 months (or since the first close, while there's less history). */
+function Trend({ history, d }: { history: { month: string; net: number }[]; d: Display }) {
+  const last = history[history.length - 1];
+  // The close n months back, or the nearest one before it if that month was skipped.
+  const at = (n: number) => [...history].reverse().find((h) => h.month <= addMonths(last.month, -n));
+  const first = history[0];
+  const parts: { label: string; v: number }[] = [];
+  const m3 = at(3), m12 = at(12);
+  if (m3) parts.push({ label: '3 months', v: last.net - m3.net });
+  if (m12) parts.push({ label: '12 months', v: last.net - m12.net });
+  if (!m12 && first.month !== m3?.month) parts.push({ label: `since ${shortMonth(first.month)} ${first.month.slice(0, 4)}`, v: last.net - first.net });
+  return (
+    <div className="trend">
+      {parts.map((p) => (
+        <div key={p.label} className="trend-item">
+          <span className={`num strong ${p.v >= 0 ? 'credit' : 'bad-text'}`}>{p.v >= 0 ? 'Up ' : 'Down '}{d.show(Math.abs(p.v))}</span>
+          <span className="muted small">{p.label.startsWith('since') ? p.label : `in ${p.label}`}</span>
+        </div>
+      ))}
+    </div>
+  );
 }
