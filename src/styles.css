@@ -616,3 +616,4 @@ input, select, textarea { font-size: 16px; }
 .close-title { display: inline-flex; align-items: center; gap: 8px; }
 .card-h { font-size: 17px; }
 .close-name { align-items: flex-start; text-align: left; }
+.fire-togo { margin-top: -6px; text-align: right; }
