@@ -52,6 +52,7 @@ export interface Bucket {
   term_payments: number | null; // loans: e.g. 60
   first_payment_on: string | null; // loans: date of payment 1
   interest_rate: number | null; // loans: yearly %, optional
+  put_in_before?: number | null; // investments: money put in before the first close (arrives with migration 009)
   sort: number;
 }
 
