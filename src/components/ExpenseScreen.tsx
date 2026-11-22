@@ -9,6 +9,9 @@ import type { Bucket, Expense, NeedWant, Plan, Tag } from '../lib/types';
 import { Bud, type Mood } from './Bud';
 import { ExpenseSheet, payingAccounts } from './ExpenseSheet';
 import { PlanSheet, planTotals } from './PlanSheet';
+import { ProjectionCard } from './ProjectionCard';
+import { project } from '../lib/projection';
+import { loadBudget, yearView, type BudgetData } from '../lib/budget';
 
 type Filter = 'all' | 'charged' | 'settled';
 
@@ -56,6 +59,14 @@ export function ExpenseScreen({ tags, buckets, plans, onTagsChanged, quickLog }:
     setData(null);
     reload();
   }, [reload]);
+
+  // For the projection (this month only): the Budget tab's living costs and past months' bills.
+  const isNow = month === thisMonth();
+  const [budgetData, setBudgetData] = useState<BudgetData | null>(null);
+  useEffect(() => {
+    if (!isNow || budgetData) return;
+    loadBudget().then(setBudgetData).catch(() => undefined);
+  }, [isNow, budgetData]);
 
   const tagById = useMemo(() => new Map(tags.map((t) => [t.id, t])), [tags]);
   const bucketById = useMemo(() => new Map(buckets.map((b) => [b.id, b])), [buckets]);
@@ -160,6 +171,21 @@ export function ExpenseScreen({ tags, buckets, plans, onTagsChanged, quickLog }:
     reload();
   }
 
+  // Where this month is heading. Items over S$300 count once instead of setting the daily pace.
+  const bigFrom = rates.SGD ? 300 * rates.SGD : 1750;
+  const projection = isNow && data ? project(month, todayISO(), data.expenses, budgetData?.expenses ?? [], hkdOf, bigFrom) : null;
+  const living = (() => {
+    if (!budgetData) return { monthly: null as number | null, note: '' };
+    const y = Number(month.slice(0, 4));
+    const v = yearView(y, budgetData, plans, buckets, y);
+    if (v.living !== null) return { monthly: v.living / 12, note: v.livingSource === 'typed' ? `your ${y} living costs on the Budget tab` : v.livingSource === 'tally' ? `your ${y - 1} tally on the Budget tab` : 'your average logged month, plan costs left out' };
+    // Late in the year you may only have next year's plan filled in.
+    const next = yearView(y + 1, budgetData, plans, buckets, y + 1);
+    if (next.livingSource === 'typed' && next.living !== null) return { monthly: next.living / 12, note: `your ${y + 1} living costs from the Budget tab` };
+    return { monthly: null, note: 'Type your monthly living costs on the Budget tab to see this against a budget.' };
+  })();
+  const lastDay = new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0)).getUTCDate();
+
   const wide = typeof window !== 'undefined' && window.matchMedia?.('(min-width: 960px)').matches;
   const mood: Mood = spent.length === 0 ? 'think' : toSettle === 0 ? 'cheer' : 'happy';
   const pickDisplay = (c: DisplayCurrency) => {
@@ -199,6 +225,17 @@ export function ExpenseScreen({ tags, buckets, plans, onTagsChanged, quickLog }:
         ) : (
           <div className="alloc-layout">
             <aside className="side">
+              {projection && (
+                <ProjectionCard
+                  p={projection}
+                  monthShort={shortMonth(month)}
+                  lastDay={lastDay}
+                  budget={living.monthly}
+                  budgetNote={living.note}
+                  bigFrom={bigFrom}
+                  nameOf={(e) => e.vendor?.trim() || tagById.get(e.tag_id ?? '')?.name || 'Item'}
+                />
+              )}
               <section className="card hero compact" key={`hero-${month}`}>
                 <div className="hero-text">
                   <span className="eyebrow">Spent in {monthOnly(month)}</span>
