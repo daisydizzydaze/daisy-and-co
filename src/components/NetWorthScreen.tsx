@@ -5,7 +5,7 @@ import { useMonthFx } from '../lib/useFx';
 import { commas, fmtNum } from '../lib/numInput';
 import {
   accountsToday, bridge, closeMonth, fireTarget, flowsSince, hasGain, isDebt, kindOf, loadNetWorth, ratesAt, saveClose, saveFire, totalsByMonth,
-  computedValue, type AccountView, type Balance, type FireSettings, type NetWorthData,
+  computedValue, rollForward, type AccountView, type Balance, type FireSettings, type NetWorthData,
 } from '../lib/networth';
 import { type Bucket, type Tag } from '../lib/types';
 import { Bud, type Mood } from './Bud';
@@ -237,7 +237,7 @@ function AccountRow({ a, hkd, d }: { a: AccountView; hkd: number | null; d: Disp
     ? <>Put in {money(a.putIn, b.currency)} · <span className={gain >= 0 ? 'credit' : 'bad-text'}>{gain >= 0 ? '+' : '−'}{money(Math.abs(gain), b.currency)}{a.putIn ? ` (${gain >= 0 ? '+' : '−'}${Math.abs((gain / a.putIn) * 100).toFixed(1)}%)` : ''}</span></>
     : a.value === null ? 'Not closed yet'
     : kindOf(b) === 'card' ? 'Charged, not settled yet'
-    : kindOf(b) === 'loan' ? 'From the repayment schedule'
+    : kindOf(b) === 'loan' ? (a.paidAhead ? `Next repayment paid${a.paidAhead > 1 ? ` (${a.paidAhead} ahead)` : ''}` : a.estimated ? `Closed ${a.last ? dayMonth(a.last.closed_on) : ''}${a.moved ? ' − paid since' : ''}` : 'From the repayment schedule')
     : b.type === 'Insurance' && b.surrender_value != null ? 'Surrender value'
     : b.type === 'Equity' && !a.estimated ? 'Shares × price'
     : a.estimated && a.last ? `Closed ${dayMonth(a.last.closed_on)}${a.moved ? ' + logged since' : ''}`
@@ -326,7 +326,7 @@ function CloseSheet({ buckets, tags, data, onClose, onSaved }: { buckets: Bucket
       const p = prior(b);
       const comp = computedValue(b, data, rates);
       const f = p ? flowsSince(b, p.closed_on, data, tags, rates) : { moneyIn: 0, spent: 0 };
-      const guess = comp?.value ?? (p ? p.value + (kindOf(b) === 'property' ? 0 : f.moneyIn - f.spent) : null);
+      const guess = comp?.value ?? (p ? rollForward(b, p.value, f) : null);
       const sv = saved(b);
       v[b.id] = {
         value: sv ? fmtNum(sv.value) : guess === null ? '' : fmtNum(Math.round(guess * 100) / 100),

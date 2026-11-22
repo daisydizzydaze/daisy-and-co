@@ -29,6 +29,8 @@ export interface NetWorthData {
   income: Income[];
   allocations: Allocation[]; // done ones only
   expenses: Expense[]; // spent since then, plus every charge not yet settled
+  /** Loan bill lines ticked as paid in recent plan months, with the loan each one pays. */
+  loanPaid: (Allocation & { loan: string | null })[];
   missingTable: boolean; // migration 009 not run yet
 }
 
@@ -63,12 +65,17 @@ export async function loadNetWorth(): Promise<NetWorthData> {
   const now = closeMonth();
   const base = rows.find((r) => r.month < now) ?? rows[rows.length - 1];
   const since = base?.closed_on ?? '1900-01-01';
-  const [income, allocations, spent, unsettled] = await Promise.all([
+  const [income, allocations, spent, unsettled, paidBills, tags] = await Promise.all([
     supabase.from('income').select('*').gt('received_on', since),
     supabase.from('allocations').select('*').eq('done', true).gt('done_on', since),
     supabase.from('expenses').select('*').gt('spent_on', since),
     supabase.from('expenses').select('*').is('settled_on', null),
+    // Bills paid ahead of their due date can be from a plan month or two out.
+    supabase.from('allocations').select('*').eq('section', 'opex').eq('done', true).gte('budget_month', addMonths(thisMonth(), -2)),
+    supabase.from('tags').select('id,default_bucket_id'),
   ]);
+  const tagBucket = new Map(((tags.data as Pick<Tag, 'id' | 'default_bucket_id'>[]) ?? []).map((t) => [t.id, t.default_bucket_id]));
+  const loanPaid = ((paidBills.data as Allocation[]) ?? []).map((a) => ({ ...a, loan: a.to_bucket_id ?? tagBucket.get(a.tag_id) ?? null }));
   const seen = new Set<string>();
   const expenses = [...((spent.data as Expense[]) ?? []), ...((unsettled.data as Expense[]) ?? [])].filter((e) => !seen.has(e.id) && seen.add(e.id));
   const s = settings.data as FireSettings | null;
@@ -79,6 +86,7 @@ export async function loadNetWorth(): Promise<NetWorthData> {
     income: (income.data as Income[]) ?? [],
     allocations: (allocations.data as Allocation[]) ?? [],
     expenses,
+    loanPaid,
     missingTable,
   };
 }
@@ -122,7 +130,7 @@ export function computedValue(b: Bucket, d: NetWorthData, rates: Record<string, 
       return { value: owed, source: 'cards' };
     }
     case 'loan': {
-      const st = loanStatus(b, todayISO());
+      const st = loanStatus(b, todayISO(), d.loanPaid.filter((a) => a.loan === b.id));
       return st?.balance != null ? { value: st.balance, source: 'loan' } : null;
     }
     default:
@@ -130,6 +138,14 @@ export function computedValue(b: Bucket, d: NetWorthData, rates: Record<string, 
       if (b.type === 'Insurance' && b.surrender_value != null) return { value: Number(b.surrender_value), source: 'surrender' };
       return null;
   }
+}
+
+/** Last close moved on by what's logged since. Paying into a debt brings what you owe down. */
+export function rollForward(b: Bucket, last: number, f: { moneyIn: number; spent: number }): number {
+  const k = kindOf(b);
+  if (k === 'property') return last;
+  if (k === 'loan') return Math.max(0, last - f.moneyIn);
+  return last + f.moneyIn - f.spent;
 }
 
 /** Money moved in and out of an account since a date, from Allocation and Expense, in its own currency. */
@@ -165,6 +181,7 @@ export interface AccountView {
   moved: boolean; // something was logged since the last close
   last: Balance | null;
   putIn: number | null; // investments: everything put in so far
+  paidAhead: number; // loans: repayments ticked as paid before their due date
 }
 
 /** Each account today: worked out, or last close + what you've logged since. */
@@ -175,11 +192,12 @@ export function accountsToday(buckets: Bucket[], d: NetWorthData, tags: Tag[], r
     const comp = computedValue(b, d, rates);
     const f = last ? flowsSince(b, last.closed_on, d, tags, rates) : { moneyIn: 0, spent: 0 };
     let value: number | null = comp?.value ?? null;
-    if (value === null && last) value = last.value + (kindOf(b) === 'property' ? 0 : f.moneyIn - f.spent);
+    if (value === null && last) value = rollForward(b, last.value, f);
     const putIn = hasGain(b) && b.put_in_before != null
       ? Number(b.put_in_before) + mine.reduce((s, x) => s + x.money_in, 0) + (last ? f.moneyIn : 0)
       : null;
-    return { b, value, estimated: !comp, moved: Math.abs(f.moneyIn) + Math.abs(f.spent) > 0.005, last, putIn };
+    const paidAhead = kindOf(b) === 'loan' ? loanStatus(b, todayISO(), d.loanPaid.filter((a) => a.loan === b.id))?.ahead ?? 0 : 0;
+    return { b, value, paidAhead, estimated: !comp, moved: Math.abs(f.moneyIn) + Math.abs(f.spent) > 0.005, last, putIn };
   });
 }
 
