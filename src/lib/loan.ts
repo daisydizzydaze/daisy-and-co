@@ -1,4 +1,4 @@
-import type { Bucket } from './types';
+import type { Allocation, Bucket } from './types';
 
 const MONTHS_PER = { monthly: 1, quarterly: 3, yearly: 12 } as const;
 const PER_YEAR = { monthly: 12, quarterly: 4, yearly: 1 } as const;
@@ -28,18 +28,37 @@ export interface LoanStatus {
   lastPaymentOn: string;
   balance: number | null;
   exact: boolean;
+  ahead: number; // repayments ticked as paid before their due date
 }
 
-/** Mirrors the loan_status view in the database. */
-export function loanStatus(b: Bucket, today: string): LoanStatus | null {
+/** The schedule date of the repayment a bill line in this plan month pays: the first on or after the 1st. */
+function dueFor(b: Bucket, budgetMonth: string): string | null {
+  const per = MONTHS_PER[b.payment_cadence ?? 'monthly'];
+  for (let k = 0; k < (b.term_payments ?? 0); k++) {
+    const d = addMonthsISO(b.first_payment_on!, k * per);
+    if (d >= budgetMonth) return d;
+  }
+  return null;
+}
+
+/** Mirrors the loan_status view in the database. Repayments count on their due date, or earlier
+ *  once their bill line is ticked as paid on Allocation (pass the done lines that pay this loan). */
+export function loanStatus(b: Bucket, today: string, paid: Allocation[] = []): LoanStatus | null {
   if (!b.term_payments || !b.first_payment_on) return null;
   const per = MONTHS_PER[b.payment_cadence ?? 'monthly'];
-  const made = b.first_payment_on > today ? 0 : Math.min(b.term_payments, 1 + Math.floor(monthsBetween(b.first_payment_on, today) / per));
+  const byDate = b.first_payment_on > today ? 0 : Math.min(b.term_payments, 1 + Math.floor(monthsBetween(b.first_payment_on, today) / per));
+  const early = new Set<string>();
+  for (const a of paid) {
+    if (!a.done || !a.done_on || a.done_on > today) continue;
+    const due = dueFor(b, a.budget_month);
+    if (due && due > today) early.add(due);
+  }
+  const made = Math.min(b.term_payments, byDate + early.size);
   const left = b.term_payments - made;
   const pay = b.monthly_payment == null ? null : Number(b.monthly_payment);
   const r = Number(b.interest_rate ?? 0) / 100 / PER_YEAR[b.payment_cadence ?? 'monthly'];
   const balance = pay === null ? null : r > 0 ? (pay * (1 - Math.pow(1 + r, -left))) / r : pay * left;
-  return { made, left, lastPaymentOn: addMonthsISO(b.first_payment_on, (b.term_payments - 1) * per), balance, exact: b.interest_rate != null };
+  return { made, left, lastPaymentOn: addMonthsISO(b.first_payment_on, (b.term_payments - 1) * per), balance, exact: b.interest_rate != null, ahead: made - byDate };
 }
 
 /** From "I've made N payments" back to the date of payment 1. */
